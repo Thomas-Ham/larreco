@@ -51,6 +51,7 @@ find_ups_product( cetbuildtools )
 find_ups_product( postgresql )
 find_ups_product( range )
 find_ups_product( eigen )
+find_ups_product( larpandoracontent )
 
 # macros for dictionary and simple_plugin
 include(ArtDictionary)

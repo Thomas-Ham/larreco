@@ -3,67 +3,68 @@ BEGIN_PROLOG
 
 standard_trackshowersepalg:
 {
-  ConeAngle: 15
-  CylinderRadius: 20.
-  TrackVertexCut: 5.
-  CylinderCut: 0.2
-  ShowerConeCut: 5.
-  RectangleWidth: 1.
-  RectangleCut: 0.5
+ConeAngle: 15
+             CylinderRadius: 20.
+             TrackVertexCut: 5.
+             CylinderCut: 0.2
+             ShowerConeCut: 5.
+             RectangleWidth: 1.
+             RectangleCut: 0.5
 }
 
 standard_showerenergyalg:
 {
-  UGradient:   7.69985e-06
-  UIntercept: -0.0160794
-  VGradient:   7.70957e-06
-  VIntercept: -0.0160174
-  ZGradient:   7.30337e-06
-  ZIntercept: -0.0191387
+UGradient:   7.69985e-06
+               UIntercept: -0.0160794
+               VGradient:   7.70957e-06
+               VIntercept: -0.0160174
+               ZGradient:   7.30337e-06
+               ZIntercept: -0.0191387
 }
 
 dune35t_showerenergy:
 {
-  # Last updated M Wallbank, 8/8/16
-  # LArSoft v06_01_00
-  UGradient:   8.1406e-06
-  UIntercept: -0.00772234
-  VGradient:   7.98303e-06
-  VIntercept: -0.00442084
-  ZGradient:   7.98278e-06
-  ZIntercept: -0.0143167
+# Last updated M Wallbank, 8/8/16
+# LArSoft v06_01_00
+UGradient:   8.1406e-06
+               UIntercept: -0.00772234
+               VGradient:   7.98303e-06
+               VIntercept: -0.00442084
+               ZGradient:   7.98278e-06
+               ZIntercept: -0.0143167
 }
 
 dune35tdata_showerenergy:
 {
-  # Last updated M Wallbank, 10/4/16
-  # Only calculated for the collection plane
-  UGradient:   5.88161e-3
-  UIntercept: -1.36686
-  VGradient:   5.88161e-3
-  VIntercept: -1.36686
-  ZGradient:   5.88161e-3
-  ZIntercept: -1.36686
-  # M Wallbank 8/10/16
-  # UGradient:   5.53072e-3
-  # UIntercept: -33.6764
-  # VGradient:   5.53072e-3
-  # VIntercept: -33.6764
-  # ZGradient:   5.53072e-3
-  # ZIntercept: -33.6764
+# Last updated M Wallbank, 10/4/16
+# Only calculated for the collection plane
+UGradient:   5.88161e-3
+               UIntercept: -1.36686
+               VGradient:   5.88161e-3
+               VIntercept: -1.36686
+               ZGradient:   5.88161e-3
+               ZIntercept: -1.36686
+# M Wallbank 8/10/16
+# UGradient:   5.53072e-3
+# UIntercept: -33.6764
+# VGradient:   5.53072e-3
+# VIntercept: -33.6764
+# ZGradient:   5.53072e-3
+# ZIntercept: -33.6764
 }
 
 dune10kt_showerenergy:
 {
-  # Last updated M Wallbank, 8/8/16
-  # LArSoft v06_00_01
-  UGradient:   7.69985e-06
-  UIntercept: -0.0160794
-  VGradient:   7.70957e-06
-  VIntercept: -0.0160174
-  ZGradient:   7.30337e-06
-  ZIntercept: -0.0191387
+# Last updated M Wallbank, 8/8/16
+# LArSoft v06_00_01
+UGradient:   7.69985e-06
+               UIntercept: -0.0160794
+               VGradient:   7.70957e-06
+               VIntercept: -0.0160174
+               ZGradient:   7.30337e-06
+               ZIntercept: -0.0191387
 }
+
 
 standard_tracsalg:
 {
@@ -72,7 +73,7 @@ HitModuleLabel:        "linecluster"
 PFParticleModuleLabel: "pandora"
 InitialTrackInputLabel: "InitialTrack"
 ShowerStartPositionInputLabel: "ShowerStartPosition"
-ShowerDirectionInputLabel: "ShowerDirection"
+ShowerDirectionInputLabel: "ShowerDirection" 
 InitialTrackSpacePointsInputLabel: "InitialTrackSpacePoints"
 }
 
@@ -84,6 +85,7 @@ PFParticleModuleLabel: "pandora"
 ShowerStartPositionInputLabel: "ShowerStartPosition"
 ShowerDirectionInputLabel: "ShowerDirection"
 InitialTrackSpacePointsInputLabel: "InitialTrackSpacePoints"
+
 }
 
 

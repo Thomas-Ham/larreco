@@ -1,9 +1,10 @@
+include_directories( $ENV{PANDORA_INC} )
+
 add_subdirectory(Cheating)
 
 art_make(TOOL_LIBRARIES 
-			${ART_FRAMEWORK_SERVICES_REGISTRY}
 			larreco_RecoAlg
-			${ART_FRAMEWORK_CORE}  
+			LArPandoraContent
 )
 
 install_headers()

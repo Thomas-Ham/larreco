@@ -51,9 +51,12 @@ namespace ShowerRecoTools{
     calo::CalorimetryAlg              fCalorimetryAlg;
 
     //fcl parameters.
-    double fdEdxTrackLength; //Max length from a hit can be to the start point in cm.
+    double fdEdxTrackLength,dEdxTrackLength; //Max length from a hit can be to the start point in cm.
     bool   fMaxHitPlane;     //Set the best planes as the one with the most hits
     bool   fMissFirstPoint;  //Do not use any hits from the first wire.
+    bool   fScaleWithEnergy;
+    float  fEnergyLengthConst;
+    std::string fShowerEnergyInputLabel;
     std::string fShowerStartPositionInputLabel;
     std::string fInitialTrackHitsInputLabel;
     std::string fShowerDirectionInputLabel;
@@ -68,6 +71,9 @@ namespace ShowerRecoTools{
     fdEdxTrackLength(pset.get<float>("dEdxTrackLength")),
     fMaxHitPlane(pset.get<bool>("MaxHitPlane")),
     fMissFirstPoint(pset.get<bool>("MissFirstPoint")),
+    fScaleWithEnergy(pset.get<bool>("ScaleWithEnergy")),
+    fEnergyLengthConst(pset.get<float>("EnergyLengthConst")),
+    fShowerEnergyInputLabel(pset.get<std::string>("ShowerEnergyInputLabel")),
     fShowerStartPositionInputLabel(pset.get<std::string>("ShowerStartPositionInputLabel")),
     fInitialTrackHitsInputLabel(pset.get<std::string>("InitialTrackHitsInputLabel")),
     fShowerDirectionInputLabel(pset.get<std::string>("ShowerDirectionInputLabel")),
@@ -85,6 +91,24 @@ namespace ShowerRecoTools{
 					       reco::shower::ShowerElementHolder& ShowerEleHolder
 					       ){
 
+    dEdxTrackLength=fdEdxTrackLength;
+
+    //Check if the user want to try sclaing the paramters with respect to energy.
+    if(fScaleWithEnergy){
+      if(!ShowerEleHolder.CheckElement(fShowerEnergyInputLabel)){
+	mf::LogError("fStandardCalodEdx") << "ShowerEnergy not set, returning "<< std::endl;
+	return 1;
+      }
+      std::vector<double> Energy = {-999,-999,-999};
+      ShowerEleHolder.GetElement(fShowerEnergyInputLabel,Energy);
+
+      //We should change this
+      //Assume that the max energy is the correct energy as our clustering is currently poo.
+      double max_energy =  *max_element(std::begin(Energy), std::end(Energy))/1000;
+      dEdxTrackLength     += max_energy*fEnergyLengthConst*fdEdxTrackLength;
+      }
+
+    
 
     // Shower dEdx calculation
     if(!ShowerEleHolder.CheckElement(fShowerStartPositionInputLabel)){
@@ -175,7 +199,7 @@ namespace ShowerRecoTools{
             }
 
 	    //Ignore hits that are too far away.
-            if (std::abs((w1-w0)*pitch)<fdEdxTrackLength){
+            if (std::abs((w1-w0)*pitch)<dEdxTrackLength){
               vQ.push_back(hit->Integral());
               totQ += hit->Integral();
               avgT += hit->PeakTime();

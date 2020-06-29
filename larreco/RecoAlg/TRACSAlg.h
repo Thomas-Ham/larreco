@@ -50,11 +50,14 @@ class shower::TRACSAlg {
         TVector3 const& ShowerPosition
         ) const;
 
-    void OrderShowerSpacePoints(std::vector<art::Ptr<recob::SpacePoint> >& showerspcs,
+    void OrderShowerSpacePointsPerpendicular(std::vector<art::Ptr<recob::SpacePoint> >&
+        showersps, TVector3 const& vertex, TVector3 const& direction) const;
+
+    void OrderShowerSpacePoints(std::vector<art::Ptr<recob::SpacePoint> >& showersps,
         TVector3 const& vertex, TVector3 const& direction) const;
 
-    void OrderShowerSpacePoints( std::vector<art::Ptr<recob::SpacePoint> >&
-				 showersps, TVector3 const& vertex) const;
+    void OrderShowerSpacePoints(std::vector<art::Ptr<recob::SpacePoint> >& showersps,
+        TVector3 const& vertex) const;
 
     TVector3 ShowerCentre(std::vector<art::Ptr<recob::SpacePoint> > const& showersps) const;
 
@@ -69,9 +72,6 @@ class shower::TRACSAlg {
 
     double DistanceBetweenSpacePoints(art::Ptr<recob::SpacePoint> const& sp_a, art::Ptr<recob::SpacePoint> const& sp_b) const;
 
-    double TotalCorrectedCharge(std::vector<art::Ptr<recob::SpacePoint> > const& sps, art::FindManyP<recob::Hit> const& fmh) const;
-
-
     double SpacePointCharge(art::Ptr<recob::SpacePoint> const& sp, art::FindManyP<recob::Hit> const& fmh) const;
 
     double SpacePointTime(art::Ptr<recob::SpacePoint> const& sp, art::FindManyP<recob::Hit> const& fmh) const;
@@ -82,7 +82,10 @@ class shower::TRACSAlg {
     double SpacePointProjection(art::Ptr<recob::SpacePoint> const& sp, TVector3 const& vertex,
         TVector3 const& direction) const;
 
-    double SpacePointPerpendiular(art::Ptr<recob::SpacePoint> const& sp, TVector3 const& vertex,
+    double SpacePointPerpendicular(art::Ptr<recob::SpacePoint> const &sp,
+        TVector3 const& vertex, TVector3 const& direction) const;
+
+    double SpacePointPerpendicular(art::Ptr<recob::SpacePoint> const& sp, TVector3 const& vertex,
         TVector3 const& direction, double proj) const;
 
     void DebugEVD(art::Ptr<recob::PFParticle> const& pfparticle,

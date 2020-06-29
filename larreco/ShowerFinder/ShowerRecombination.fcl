@@ -1,0 +1,42 @@
+#include "simulationservices_sbnd.fcl"
+#include "services_sbnd.fcl"
+#include "backtrackerservice.fcl"
+#include "particleinventoryservice.fcl"
+#include "sam_sbnd.fcl"
+#include "showerfindermodules.fcl"
+
+services:
+{
+  TFileService: { fileName: "showerRecombinationHists.root" }
+  @table::sbnd_services
+  FileCatalogMetadata:  @local::sbnd_file_catalog_mc
+  ParticleInventoryService: @local::standard_particleinventoryservice
+  BackTrackerService:  @local::standard_backtrackerservice
+}
+
+source:
+{
+  module_type: RootInput
+  maxEvents:  -1        # Number of events to create
+
+}
+
+physics:
+{
+  analyzers:
+  {
+     test:
+	{
+           module_type: ShowerRecombination	 
+	   GenieGenModuleLabel:      "generator"
+	   LArGeantModuleLabel:      "largeant"
+	   HitsModuleLabel:          "gaushit"
+	   TrackModuleLabel:         "pmalgtrackmaker"
+
+	}
+  }
+
+ ana: [ test ]
+ end_paths: [ ana ]
+
+}

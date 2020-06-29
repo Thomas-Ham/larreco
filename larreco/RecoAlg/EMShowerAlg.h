@@ -145,7 +145,9 @@ private:
 
   /// Orders hits along the best fit line through the charge-weighted centre of the hits.
   /// Orders along the line perpendicular to the least squares line if perpendicular is set to true.
+ public:
   std::vector<art::Ptr<recob::Hit> > FindOrderOfHits(std::vector<art::Ptr<recob::Hit> > const& hits, bool perpendicular = false) const;
+ private: 
 
   /// Takes a map of the shower hits on each plane (ordered from what has been decided to be the start)
   /// Returns a map of the initial track-like part of the shower on each plane
@@ -171,12 +173,13 @@ private:
 
   /// Takes initial track hits from multiple views and forms a track object which best represents the start of the shower
   std::unique_ptr<recob::Track> MakeInitialTrack(std::map<int,std::vector<art::Ptr<recob::Hit> > > const& initialHitsMap,
-                                                 std::map<int,std::vector<art::Ptr<recob::Hit> > > const& showerHitsMap) const;
-
+						 std::map<int,std::vector<art::Ptr<recob::Hit> > > const& showerHitsMap) const;
+ public: 
   /// Takes the hits associated with a shower and orders then so they follow the direction of the shower
   void OrderShowerHits(std::vector<art::Ptr<recob::Hit> > const& shower,
 		       std::vector<art::Ptr<recob::Hit> >& orderedShower,
-                       art::Ptr<recob::Vertex> const& vertex) const;
+		       art::Ptr<recob::Vertex> const& vertex) const;
+ private: 
 
   /// Projects a 3D point (units [cm]) onto a 2D plane
   /// Returns 2D point (units [cm])

@@ -32,8 +32,6 @@ namespace ShowerRecoTools {
 
       ShowerExampleTool(const fhicl::ParameterSet& pset);
 
-      ~ShowerExampleTool();
-
       //Example Direction Finder
       int CalculateElement(const art::Ptr<recob::PFParticle>& pfparticle,
           art::Event& Event,
@@ -46,7 +44,7 @@ namespace ShowerRecoTools {
       void InitialiseProducers() override;
 
       //Function to add the assoctions
-      int AddAssociations(art::Event& Event,
+      int AddAssociations(const art::Ptr<recob::PFParticle>& pfpPtr, art::Event& Event,
           reco::shower::ShowerElementHolder& ShowerEleHolder) override;
 
       //prehaps you want a fcl parameter.
@@ -62,12 +60,8 @@ namespace ShowerRecoTools {
   {
   }
 
-  ShowerExampleTool::~ShowerExampleTool()
+  void ShowerExampleTool::InitialiseProducers()
   {
-  }
-
-  void ShowerExampleTool::InitialiseProducers(){
-
     //Do you create something and you want to save it the event. Initialsie here. For every event with have a vector of showers so each one has a vertex. This is what we are saving. Make sure to use the name "myvertex" later down the line.
     InitialiseProduct<std::vector<recob::Vertex> >("myvertex");
 
@@ -159,7 +153,7 @@ namespace ShowerRecoTools {
     return 0;
   }
 
-  int ShowerExampleTool::AddAssociations(art::Event& Event,
+  int ShowerExampleTool::AddAssociations(const art::Ptr<recob::PFParticle>& pfpPtr, art::Event& Event,
       reco::shower::ShowerElementHolder& ShowerEleHolder
       ){
     //Here you add elements to associations defined. You can get the art::Ptrs by  GetProducedElementPtr<T>. Then you can add single like a usally association using AddSingle<assn<T>. Assn below.
@@ -182,4 +176,3 @@ namespace ShowerRecoTools {
 }
 
 DEFINE_ART_CLASS_TOOL(ShowerRecoTools::ShowerExampleTool)
-

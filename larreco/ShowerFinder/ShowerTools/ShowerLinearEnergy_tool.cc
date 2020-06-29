@@ -36,77 +36,60 @@ namespace ShowerRecoTools {
 
     public:
 
-    ShowerLinearEnergy(const fhicl::ParameterSet& pset);
-    
-    ~ShowerLinearEnergy();
-    
-    //Physics Function. Calculate the shower Energy.
-    int CalculateElement(const art::Ptr<recob::PFParticle>& pfparticle,
-			 art::Event& Event,
-			 reco::shower::ShowerElementHolder& ShowerElementHolder
-			 ) override;
-  private:
-    
-    double CalculateEnergy(std::vector<art::Ptr<recob::Hit> >& hits, geo::View_t& view);
-    
-    //fcl parameters 
-    double fUGradient;   //Gradient of the linear fit of total charge to total energy on the U plane.
-    double fUIntercept;  //Intercept of the linear fit of total charge to total energy on the U plane.   
-    double fVGradient;
-    double fVIntercept;
-    double fZGradient;
-    double fZIntercept;
-    double fXGradient;
-    double fXIntercept;
-    double fYGradient;
-    double fYIntercept;
-    double f3DGradient;
-    double f3DIntercept;
-    
-    art::InputTag fPFParticleModuleLabel;
+      ShowerLinearEnergy(const fhicl::ParameterSet& pset);
 
-    std::string   fShowerEnergyOutputLabel;
+      ~ShowerLinearEnergy();
 
-    //Services
-    detinfo::DetectorProperties const* detprop = nullptr;
-    art::ServiceHandle<geo::Geometry> fGeom;
-    
+      //Physics Function. Calculate the shower Energy.
+      int CalculateElement(const art::Ptr<recob::PFParticle>& pfparticle,
+          art::Event& Event,
+          reco::shower::ShowerElementHolder& ShowerElementHolder
+          ) override;
+    private:
+
+      double CalculateEnergy(std::vector<art::Ptr<recob::Hit> >& hits, int& plane);
+
+      //fcl parameters
+      unsigned int        fNumPlanes;
+      std::vector<double> fGradients;   //Gradient of the linear fit of total charge to total energy
+      std::vector<double> fIntercepts;  //Intercept of the linear fit of total charge to total energy
+
+      art::InputTag fPFParticleModuleLabel;
+
+      std::string fShowerEnergyOutputLabel;
+      std::string fShowerBestPlaneOutputLabel;
+
+      //Services
+      detinfo::DetectorProperties const* detprop = nullptr;
+      art::ServiceHandle<geo::Geometry> fGeom;
+
   };
 
   ShowerLinearEnergy::ShowerLinearEnergy(const fhicl::ParameterSet& pset) :
     IShowerTool(pset.get<fhicl::ParameterSet>("BaseTools")),
-    fUGradient(pset.get<double>("UGradient")),
-    fUIntercept(pset.get<double>("UIntercept")),
-    fVGradient(pset.get<double>("VGradient")),
-    fVIntercept(pset.get<double>("VIntercept")),
-    fZGradient(pset.get<double>("ZGradient")),
-    fZIntercept(pset.get<double>("ZIntercept")),
-    fXGradient(pset.get<double>("XGradient")),
-    fXIntercept(pset.get<double>("XIntercept")),
-    fYGradient(pset.get<double>("YGradient")),
-    fYIntercept(pset.get<double>("YIntercept")),
-    f3DGradient(pset.get<double>("ThreeDGradient")),
-    f3DIntercept(pset.get<double>("ThreeDIntercept")),
+    fGradients(pset.get<std::vector<double> >("Gradients")),
+    fIntercepts(pset.get<std::vector<double> >("Intercepts")),
     fPFParticleModuleLabel(pset.get<art::InputTag>("PFParticleModuleLabel","")),
     fShowerEnergyOutputLabel(pset.get<std::string>("ShowerEnergyOutputLabel")),
+    fShowerBestPlaneOutputLabel(pset.get<std::string>("ShowerBestPlaneOutputLabel")),
     detprop(lar::providerFrom<detinfo::DetectorPropertiesService>())
   {
+    fNumPlanes = fGeom->Nplanes();
+    if (fNumPlanes!=fGradients.size() || fNumPlanes!=fIntercepts.size()){
+      throw cet::exception("ShowerLinearEnergy")
+        << "The number of planes does not match the size of the fcl parametes passed: Num Planes: "
+        << fNumPlanes << ", Gradients size: " << fGradients.size() << ", Intercpts size: "
+        << fIntercepts.size();
+    }
   }
 
   ShowerLinearEnergy::~ShowerLinearEnergy()
   {
   }
 
-
-
   int ShowerLinearEnergy::CalculateElement(const art::Ptr<recob::PFParticle>& pfparticle,
-					   art::Event& Event,
-					   reco::shower::ShowerElementHolder& ShowerEleHolder
-					   ){
-    
-    //Holder for the final product
-    std::vector<double> ShowerLinearEnergy;
-    unsigned int numPlanes = fGeom->Nplanes();
+      art::Event& Event, reco::shower::ShowerElementHolder& ShowerEleHolder
+      ){
 
     // Get the assocated pfParicle vertex PFParticles
     art::Handle<std::vector<recob::PFParticle> > pfpHandle;
@@ -114,8 +97,6 @@ namespace ShowerRecoTools {
       throw cet::exception("ShowerLinearEnergy") << "Could not get the pandora pf particles. Something is not cofingured coreectly Please give the correct pandoa module label. Stopping";
       return 1;
     }
-
-    std::map<geo::View_t, std::vector<art::Ptr<recob::Hit> > > view_hits;
 
     //Get the clusters
     art::Handle<std::vector<recob::Cluster> > clusHandle;
@@ -129,96 +110,69 @@ namespace ShowerRecoTools {
     //Get the hit association
     art::FindManyP<recob::Hit> fmhc(clusHandle, Event, fPFParticleModuleLabel);
 
+    std::map<unsigned int, std::vector<art::Ptr<recob::Hit> > > planeHits;
+
     //Loop over the clusters in the plane and get the hits
     for(auto const& cluster: clusters){
 
       //Get the hits
       std::vector<art::Ptr<recob::Hit> > hits = fmhc.at(cluster.key());
 
-      //Get the view.
-      geo::View_t view = cluster->View();
+      //Get the plane.
+      unsigned int plane = cluster->Plane().Plane;
 
-      view_hits[view].insert(view_hits[view].end(),hits.begin(),hits.end());
+      planeHits[plane].insert(planeHits[plane].end(),hits.begin(),hits.end());
     }
-    
-    std::map<unsigned int, double > view_energies;
-    //Accounting for events crossing the cathode.
-    for(auto const& view_hit_iter: view_hits){
 
-      std::vector<art::Ptr<recob::Hit> > hits = view_hit_iter.second;
-      geo::View_t view = view_hit_iter.first;
+    // Calculate the energy fro each plane && best plane
+    int bestPlane                 = -999;
+    unsigned int bestPlaneNumHits = 0;
+
+    //Holder for the final product
+    std::vector<double> energyVec(fNumPlanes, -999);
+    std::vector<double> energyError(fNumPlanes, -999);
+
+    for(auto const& planeHitIter: planeHits){
+
+      std::vector<art::Ptr<recob::Hit> > hits = planeHitIter.second;
+
+      int plane                 = planeHitIter.first;
+      unsigned int planeNumHits = hits.size();
 
       //Calculate the Energy for
-      double Energy = CalculateEnergy(hits,view);
+      double Energy = CalculateEnergy(hits,plane);
+      // If the energy is negative, leave it at -999
+      if (Energy>0)
+        energyVec.at(plane) = Energy;
 
-      unsigned int viewNum = view;
-      view_energies[viewNum] = Energy;
-    }
-
-    //TODO think of a better way of doing this
-    for (unsigned int plane=0; plane<numPlanes; ++plane) {
-      double Energy;
-      try{
-        Energy = view_energies.at(plane);
-        if (Energy<0){
-          mf::LogWarning("ShowerLinearEnergy") << "Negative shower energy: "<<Energy;
-          Energy=-999;
-        }
-
-      } catch(...){
-        mf::LogWarning("ShowerLinearEnergy") <<"No energy calculation for plane "<<plane<<std::endl;
-        Energy = -999;
+      if (planeNumHits > bestPlaneNumHits) {
+        bestPlane        = plane;
+        bestPlaneNumHits = planeNumHits;
       }
-      ShowerLinearEnergy.push_back(Energy);
-    }
-
-    if(ShowerLinearEnergy.size() == 0){
-      throw cet::exception("ShowerLinearEnergy") << "Energy Vector is empty";
-      return 1;
     }
 
     //TODO
-    std::vector<double> EnergyError = {-999,-999,-999};
 
-    ShowerEleHolder.SetElement(ShowerLinearEnergy,EnergyError,fShowerEnergyOutputLabel);
+    ShowerEleHolder.SetElement(energyVec, energyError, fShowerEnergyOutputLabel);
+    // Only set the best plane if it has some hits in it
+    if (bestPlane!=-999){
+      ShowerEleHolder.SetElement(bestPlane, fShowerBestPlaneOutputLabel);
+    }
 
     return 0;
   }
 
   //Function to calculate the energy of a shower in a plane. Using a linear map between charge and Energy.
   //Exactly the same method as the ShowerEnergyAlg.cxx. Thanks Mike.
-  double ShowerLinearEnergy::CalculateEnergy(std::vector<art::Ptr<recob::Hit> >& hits, geo::View_t& view){
+  double ShowerLinearEnergy::CalculateEnergy(std::vector<art::Ptr<recob::Hit> >& hits, int& plane) {
 
     double totalCharge = 0, totalEnergy = 0;
 
-    for (art::PtrVector<recob::Hit>::const_iterator hit = hits.begin(); hit != hits.end(); ++hit){
-      totalCharge += ( (*hit)->Integral() * TMath::Exp( (detprop->SamplingRate() * (*hit)->PeakTime()) / (detprop->ElectronLifetime()*1e3) ) );
+    for (auto const& hit: hits){
+      totalCharge += (hit->Integral() * TMath::Exp( (detprop->SamplingRate() * hit->PeakTime()) / (detprop->ElectronLifetime()*1e3) ) );
     }
 
-    switch (view) {
-      case geo::kU:
-        totalEnergy = (totalCharge * fUGradient) + fUIntercept;
-        break;
-      case geo::kV:
-        totalEnergy = (totalCharge * fVGradient) + fVIntercept;
-        break;
-      case geo::kW: //same as geo::kZ
-        totalEnergy = (totalCharge * fZGradient) + fZIntercept;
-        break;
-      case geo::kX:
-        totalEnergy = (totalCharge * fXGradient) + fXIntercept;
-        break;
-      case geo::kY:
-        totalEnergy = (totalCharge * fYGradient) + fYIntercept;
-        break;
-      case geo::k3D:
-        totalEnergy = (totalCharge * f3DGradient) + f3DIntercept;
-        break;
-      default:
-        throw cet::exception("ShowerLinearEnergy") << "View Not configured";
-        return 1;
-
-    }
+    totalEnergy = (totalCharge * fGradients.at(plane)) + fIntercepts.at(plane);
 
     return totalEnergy;
 

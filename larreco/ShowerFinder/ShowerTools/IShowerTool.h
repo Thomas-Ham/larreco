@@ -46,11 +46,11 @@ namespace ShowerRecoTools{
       //Main function that runs the shower tool.  This includes running the derived function
       //that calculates the shower element and also runs the event display if requested
       int RunShowerTool(const art::Ptr<recob::PFParticle>& pfparticle,
-			art::Event& Event,
-			reco::shower::ShowerElementHolder& ShowerEleHolder,
-			std::string evd_display_name_append=""
-			){
-	
+          art::Event& Event,
+          reco::shower::ShowerElementHolder& ShowerEleHolder,
+          std::string evd_display_name_append=""
+          ){
+
         int calculation_status = CalculateElement(pfparticle, Event, ShowerEleHolder);
         if (calculation_status != 0) return calculation_status;
         if (fRunEventDisplay){
@@ -73,7 +73,7 @@ namespace ShowerRecoTools{
       }
 
       //End function so the user can add associations
-      virtual int  AddAssociations(art::Event& Event,
+      virtual int  AddAssociations(const art::Ptr<recob::PFParticle>& pfpPtr, art::Event& Event,
           reco::shower::ShowerElementHolder& ShowerEleHolder){return 0;}
 
     protected:

@@ -88,7 +88,7 @@ namespace ShowerRecoTools{
     //Get the spacepoints handle and the hit assoication
     art::Handle<std::vector<recob::SpacePoint> > spHandle;
     if (!Event.getByLabel(fPFParticleModuleLabel, spHandle)){
-      throw cet::exception("ShowerPFPVertexStartPosition") << "Could not configure the spacepoint handle. Something is configured incorrectly. Stopping";
+      throw cet::exception("ShowerPFPVertexStartPosition") << "Coquld not configure the spacepoint handle. Something is configured incorrectly. Stopping";
       return 1;
     }
     art::FindManyP<recob::Hit> fmh(spHandle, Event, fPFParticleModuleLabel);
