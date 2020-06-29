@@ -19,6 +19,7 @@
 #include "cetlib_except/exception.h"
 #include "canvas/Persistency/Common/Ptr.h"
 #include "canvas/Persistency/Common/FindManyP.h"
+#include "lardataobj/AnalysisBase/T0.h"
 
 //LArSoft Includes
 #include "lardata/DetectorInfoServices/DetectorPropertiesService.h"
@@ -51,14 +52,11 @@ namespace ShowerRecoTools{
           art::Event& Event,
           reco::shower::ShowerElementHolder& ShowerEleHolder) override;
 
-    void FinddEdxLength(std::vector<double>& dEdx_vec, std::vector<double>& dEdx_val);
-
     private:
 
       //Servcies and Algorithms
       art::ServiceHandle<geo::Geometry> fGeom;
       calo::CalorimetryAlg fCalorimetryAlg;
-
       detinfo::DetectorProperties const* fDetProp;
 
       //fcl parameters
@@ -69,21 +67,19 @@ namespace ShowerRecoTools{
       //going too much into the plane. In Microseconds
       float fMinDistCutOff;   //Distance in wires a hit has to be from the start position
       //to be used
-      float fMaxDist,MaxDist;         //Distance in wires a that a trajectory point can be from a
+      float fMaxDist;         //Distance in wires a that a trajectory point can be from a
       //spacepoint to match to it.
-      float fdEdxTrackLength,dEdxTrackLength; //Max Distance a spacepoint can be away from the start of the
+      float fdEdxTrackLength; //Max Distance a spacepoint can be away from the start of the
       //track. In cm
-      float fdEdxCut;
       bool fUseMedian;        //Use the median value as the dEdx rather than the mean.
       bool fCutStartPosition; //Remove hits using MinDistCutOff from the vertex as well.
-      bool fScaleWithEnergy;
-      float fEnergyResidualConst; 
-      float fEnergyLengthConst;
-
+      bool fT0Correct;
+      bool fSCECorrectPitch;
+      bool fSCECorrectEField;
       art::InputTag fPFParticleModuleLabel;
 
-      std::string fShowerEnergyInputLabel;
       std::string fShowerStartPositionInputLabel;
+      std::string fShowerDirectionInputLabel;
       std::string fInitialTrackSpacePointsInputLabel;
       std::string fInitialTrackInputLabel;
       std::string fShowerdEdxOuputLabel;
@@ -104,12 +100,13 @@ namespace ShowerRecoTools{
     fdEdxCut(pset.get<float>("dEdxCut")),
     fUseMedian(pset.get<bool>("UseMedian")),
     fCutStartPosition(pset.get<bool>("CutStartPosition")),
-    fScaleWithEnergy(pset.get<bool>("ScaleWithEnergy")),
-    fEnergyResidualConst(pset.get<float>("EnergyResidualConst")),
-    fEnergyLengthConst(pset.get<float>("EnergyLengthConst")),
+    fT0Correct(pset.get<bool>("T0Correct")),
+    fSCECorrectPitch(pset.get<bool>("SCECorrectPitch")),
+    fSCECorrectEField(pset.get<bool>("SCECorrectEField")),
     fPFParticleModuleLabel(pset.get<art::InputTag>("PFParticleModuleLabel")),
     fShowerEnergyInputLabel(pset.get<std::string>("ShowerEnergyInputLabel")),
     fShowerStartPositionInputLabel(pset.get<std::string>("ShowerStartPositionInputLabel")),
+    fShowerDirectionInputLabel(pset.get<std::string>("ShowerDirectionInputLabel")),
     fInitialTrackSpacePointsInputLabel(pset.get<std::string>("InitialTrackSpacePointsInputLabel")),
     fInitialTrackInputLabel(pset.get<std::string>("InitialTrackInputLabel")),
     fShowerdEdxOuputLabel(pset.get<std::string>("ShowerdEdxOuputLabel")),
@@ -126,30 +123,14 @@ namespace ShowerRecoTools{
       art::Event& Event,
       reco::shower::ShowerElementHolder& ShowerEleHolder){
 
-    MaxDist         = fMaxDist;
-    dEdxTrackLength = fdEdxTrackLength;
-
-    //Check if the user want to try sclaing the paramters with respect to energy.
-    if(fScaleWithEnergy){
-      if(!ShowerEleHolder.CheckElement(fShowerEnergyInputLabel)){
-	mf::LogError("ShowerResidualTrackHitFinder") << "ShowerEnergy not set, returning "<< std::endl;
-	return 1;
-      }
-      std::vector<double> Energy = {-999,-999,-999};
-      ShowerEleHolder.GetElement(fShowerEnergyInputLabel,Energy);
-      
-      //We should change this
-      //Assume that the max energy is the correct energy as our clustering is currently poo.
-      double max_energy =  *max_element(std::begin(Energy), std::end(Energy))/1000;
-      MaxDist          += max_energy*fEnergyResidualConst*fMaxDist;
-      dEdxTrackLength  += max_energy*fEnergyLengthConst*fdEdxTrackLength;
-
-      }
-
 
     // Shower dEdx calculation
     if(!ShowerEleHolder.CheckElement(fShowerStartPositionInputLabel)){
       mf::LogError("ShowerSlidingStandardCalodEdx") << "Start position not set, returning "<< std::endl;
+      return 1;
+    }
+    if(!ShowerEleHolder.CheckElement(fShowerDirectionInputLabel)){
+      mf::LogError("ShowerStandardCalodEdx") << "Shower Direction not set"<< std::endl;
       return 1;
     }
     if(!ShowerEleHolder.CheckElement(fInitialTrackSpacePointsInputLabel)){
@@ -176,6 +157,11 @@ namespace ShowerRecoTools{
       throw cet::exception("ShowerSlidingStandardCalodEdx") << "Could not configure the spacepoint handle. Something is configured incorrectly. Stopping";
       return 1;
     }
+    art::Handle<std::vector<recob::PFParticle> > pfpHandle;
+    if (!Event.getByLabel(fPFParticleModuleLabel, pfpHandle)){
+      throw cet::exception("ShowerSlidingStandardCalodEdx") << "Could not configure the pfp handle. Something is configured incorrectly. Stopping";
+      return 1;
+    }
 
     // Get the hits associated with the space points
     art::FindManyP<recob::Hit> fmsp(spHandle, Event, fPFParticleModuleLabel);
@@ -184,17 +170,33 @@ namespace ShowerRecoTools{
       return 1;
     }
 
-
+    // Get the hits associated with the space points
+    art::FindManyP<anab::T0> fmpfpt0(pfpHandle, Event, fPFParticleModuleLabel);
+    if(!fmpfpt0.isValid() && fT0Correct){
+      throw cet::exception("ShowerSlidingStandardCalodEdx") << "Spacepoint and hit association not valid. Stopping.";
+      return 1;
+    }
 
     //Only consider hits in the same tpcs as the vertex.
     TVector3 ShowerStartPosition = {-999,-999,-999};
     ShowerEleHolder.GetElement(fShowerStartPositionInputLabel,ShowerStartPosition);
+    TVector3 showerDir = {-999,-999,-999};
+    ShowerEleHolder.GetElement(fShowerDirectionInputLabel,showerDir);
     geo::TPCID vtxTPC = fGeom->FindTPCAtPosition(ShowerStartPosition);
 
     //Get the initial track
     recob::Track InitialTrack;
     ShowerEleHolder.GetElement(fInitialTrackInputLabel,InitialTrack);
 
+    // Check if a T0 has been associated to the pfpf, if not assume t0=0
+    double pfpT0Time = 0;
+    if (fT0Correct){
+      std::vector<art::Ptr<anab::T0> > pfpT0Vec = fmpfpt0.at(pfparticle.key());
+      if (pfpT0Vec.size()==1) {
+        art::Ptr<anab::T0> pfpT0 = pfpT0Vec.front();
+        pfpT0Time = pfpT0->Time();
+      }
+    }
     //Don't care that I could use a vector.
     std::map<int,std::vector<double > > dEdx_vec;
     std::map<int,std::vector<double> >  dEdx_vecErr;
@@ -208,10 +210,12 @@ namespace ShowerRecoTools{
     }
 
     //Loop over the spacepoints
+    // std::cout<<"Test1: NumSPs: "<<tracksps.size()<<std::endl;
     for(auto const sp: tracksps){
 
       //Get the associated hit
       std::vector<art::Ptr<recob::Hit> > hits = fmsp.at(sp.key());
+      TVector3 spPos = IShowerTool::GetTRACSAlg().SpacePointPosition(sp);
       if(hits.size() == 0){
         mf::LogWarning("ShowerSlidingStandardCalodEdx") << "no hit for the spacepoint. This suggest the find many is wrong."<< std::endl;
         continue;
@@ -225,7 +229,7 @@ namespace ShowerRecoTools{
       if (TPC !=vtxTPC){continue;}
 
       //Ignore spacepoints within a few wires of the vertex.
-      double dist_from_start = (IShowerTool::GetTRACSAlg().SpacePointPosition(sp) - ShowerStartPosition).Mag();
+      double dist_from_start = (spPos - ShowerStartPosition).Mag();
 
       if(fCutStartPosition){
         if(dist_from_start < fMinDistCutOff*wirepitch){continue;}
@@ -247,7 +251,7 @@ namespace ShowerRecoTools{
         if(flags.isSet(recob::TrajectoryPointFlagTraits::NoPoint))
         {continue;}
 
-        TVector3 pos = IShowerTool::GetTRACSAlg().SpacePointPosition(sp) - TrajPosition;
+        TVector3 pos = spPos - TrajPosition;
 
         if(pos.Mag() < MinDist && pos.Mag()< MaxDist*wirepitch){
           MinDist = pos.Mag();
@@ -296,20 +300,26 @@ namespace ShowerRecoTools{
         continue;
       }
 
-      //Iterate the number of hits on the plane
-      ++num_hits[planeid.Plane];
-
-      if((TrajPosition-TrajPositionStart).Mag() > dEdxTrackLength){continue;}
-      
-
+      // Check to mitigate nan errors
+      if (TrajDirection.Mag() < std::numeric_limits<float>::epsilon()) {
+        TrajDirection = showerDir;
+      }
       //If we still exist then we can be used in the calculation. Calculate the 3D pitch
       double trackpitch = (TrajDirection*(wirepitch/TrajDirection.Dot(PlaneDirection))).Mag();
+      if (fSCECorrectPitch){
+        trackpitch = IShowerTool::GetTRACSAlg().SCECorrectPitch(trackpitch, spPos,
+            TrajDirection.Unit(), hit->WireID().TPC);
+      }
 
       //Calculate the dQdx
       double dQdx = hit->Integral()/trackpitch;
 
       //Calculate the dEdx
-      double dEdx = fCalorimetryAlg.dEdx_AREA(dQdx, hit->PeakTime(), planeid.Plane);
+      double localEField = fDetProp->Efield();
+      if (fSCECorrectEField){
+        localEField = IShowerTool::GetTRACSAlg().SCECorrectEField(localEField, spPos);
+      }
+      double dEdx = fCalorimetryAlg.dEdx_AREA(dQdx, hit->PeakTime(), planeid.Plane, pfpT0Time, localEField);
 
       //Add the value to the dEdx
       dEdx_vec[planeid.Plane].push_back(dEdx);
@@ -319,42 +329,6 @@ namespace ShowerRecoTools{
 
     }
 
-    //Search for blow ups and gradient changes.
-    //Electrons have a very flat dEdx as function of energy till ~10MeV.
-    //If there is a sudden jump particle has probably split
-    //If there is very large dEdx we have either calculated it wrong (probably) or the Electron is coming to end.
-    //Assumes hits are ordered!
-    std::map<int,std::vector<double > > dEdx_vec_cut;
-
-    for(geo::PlaneID plane_id: fGeom->IteratePlaneIDs()){
-      dEdx_vec_cut[plane_id.Plane] = {};
-    }
-
-    // int max_hits   = -999;
-    // int best_plane = -999;
-    // for(auto const& dEdx_plane: dEdx_vec){
-    //   if((int) dEdx_plane.second.size() > max_hits){
-    //     best_plane = dEdx_plane.first;
-    //     max_hits   = dEdx_plane.second.size();
-    //   }
-    // }
-
-    //Choose max hits based on hitnum
-    int max_hits   = -999;
-    int best_plane = -999;
-    for(auto const& num_hits_plane: num_hits){
-      if(num_hits_plane.second > max_hits){
-	best_plane = num_hits_plane.first;
-        max_hits   = num_hits_plane.second;
-      }
-    }
-    
-
-    for(auto& dEdx_plane: dEdx_vec){
-      FinddEdxLength(dEdx_plane.second, dEdx_vec_cut[dEdx_plane.first]);
-    }
-
-    
     //Never have the stats to do a landau fit and get the most probable value. User decides if they want the median value or the mean.
     std::vector<double> dEdx_val;
     std::vector<double> dEdx_valErr;
@@ -379,12 +353,15 @@ namespace ShowerRecoTools{
         dEdx_val.push_back(dEdx_mean/(float)(dEdx_plane.second).size());
       }
     }
-    
-    std::cout << "#### dEdx vector ###" << std::endl;
-    for(auto const& plane: dEdx_vec_cut){
-      std::cout << "#Plane: " << plane.first << " #" << std::endl; 
-      for(auto const& dEdx: plane.second){
-	std::cout << "dEdx: " << dEdx << std::endl;
+
+    //Work out which is the best plane from the most hits.
+    int max_hits   = -999;
+    int best_plane = -999;
+    for(auto const& num_hits_plane: num_hits){
+      std::cout<<"Test3: plane: "<<num_hits_plane.first<<" with hits: "<<num_hits_plane.second<<std::endl;
+      if(num_hits_plane.second > max_hits){
+        best_plane = num_hits_plane.first;
+        max_hits = num_hits_plane.second;
       }
     }
 
