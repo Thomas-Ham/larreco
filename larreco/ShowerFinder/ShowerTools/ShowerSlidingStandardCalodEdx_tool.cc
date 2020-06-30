@@ -97,14 +97,12 @@ namespace ShowerRecoTools{
     fMinDistCutOff(pset.get<float>("MinDistCutOff")),
     fMaxDist(pset.get<float>("MaxDist")),
     fdEdxTrackLength(pset.get<float>("dEdxTrackLength")),
-    fdEdxCut(pset.get<float>("dEdxCut")),
     fUseMedian(pset.get<bool>("UseMedian")),
     fCutStartPosition(pset.get<bool>("CutStartPosition")),
     fT0Correct(pset.get<bool>("T0Correct")),
     fSCECorrectPitch(pset.get<bool>("SCECorrectPitch")),
     fSCECorrectEField(pset.get<bool>("SCECorrectEField")),
     fPFParticleModuleLabel(pset.get<art::InputTag>("PFParticleModuleLabel")),
-    fShowerEnergyInputLabel(pset.get<std::string>("ShowerEnergyInputLabel")),
     fShowerStartPositionInputLabel(pset.get<std::string>("ShowerStartPositionInputLabel")),
     fShowerDirectionInputLabel(pset.get<std::string>("ShowerDirectionInputLabel")),
     fInitialTrackSpacePointsInputLabel(pset.get<std::string>("InitialTrackSpacePointsInputLabel")),
@@ -234,7 +232,7 @@ namespace ShowerRecoTools{
       if(fCutStartPosition){
         if(dist_from_start < fMinDistCutOff*wirepitch){continue;}
 
-        if(dist_from_start > dEdxTrackLength){continue;}
+        if(dist_from_start > fdEdxTrackLength){continue;}
       }
 
       //Find the closest trajectory point of the track. These should be in order if the user has used ShowerTrackTrajToSpacepoint_tool but the sake of gernicness I'll get the cloest sp.
@@ -253,7 +251,7 @@ namespace ShowerRecoTools{
 
         TVector3 pos = spPos - TrajPosition;
 
-        if(pos.Mag() < MinDist && pos.Mag()< MaxDist*wirepitch){
+        if(pos.Mag() < MinDist && pos.Mag()< fMaxDist*wirepitch){
           MinDist = pos.Mag();
           index = traj;
         }
@@ -332,7 +330,7 @@ namespace ShowerRecoTools{
     //Never have the stats to do a landau fit and get the most probable value. User decides if they want the median value or the mean.
     std::vector<double> dEdx_val;
     std::vector<double> dEdx_valErr;
-    for(auto const& dEdx_plane: dEdx_vec_cut){
+    for(auto const& dEdx_plane: dEdx_vec){
 
       if((dEdx_plane.second).size() == 0){
         dEdx_val.push_back(-999);
@@ -368,105 +366,9 @@ namespace ShowerRecoTools{
     //Need to sort out errors sensibly.
     ShowerEleHolder.SetElement(dEdx_val,dEdx_valErr,fShowerdEdxOuputLabel);
     ShowerEleHolder.SetElement(best_plane,fShowerBestPlaneOutputLabel);
-    ShowerEleHolder.SetElement(dEdx_vec_cut,fShowerdEdxVecOuputLabel);
+    ShowerEleHolder.SetElement(dEdx_vec,fShowerdEdxVecOuputLabel);
     return 0;
   }
-
-
-  void ShowerSlidingStandardCalodEdx::FinddEdxLength(std::vector<double>& dEdx_vec, std::vector<double>& dEdx_val){
-
-    //As default do not apply this cut.
-    if(fdEdxCut > 10){
-      dEdx_val = dEdx_vec;
-      return;
-    }
-    
-    
-    std::cout << "why am I running" << std::endl;
-
-    //Can only do this with 4 hits. 
-    if(dEdx_vec.size() < 4){
-      dEdx_val = dEdx_vec;
-      return;
-    }
-
-    bool upperbound = false;
-
-    //See if we are in the upper bound or upper bound defined by the cut.
-    int upperbound_int = 0;
-    if(dEdx_vec[0] > fdEdxCut){++upperbound_int;}
-    if(dEdx_vec[1] > fdEdxCut){++upperbound_int;}
-    if(dEdx_vec[2] > fdEdxCut){++upperbound_int;}
-    if(upperbound_int > 1){upperbound = true;}
-    
-
-    dEdx_val.push_back(dEdx_vec[0]);
-    dEdx_val.push_back(dEdx_vec[1]);
-    dEdx_val.push_back(dEdx_vec[2]);
-    
-    for(unsigned int dEdx_iter=2; dEdx_iter<dEdx_vec.size(); ++dEdx_iter){  
-      
-      //The Function of dEdx as a function of E is flat above ~10 MeV.
-      //We are looking for a jump up (or down) above the ladau width in the dEx 
-      //to account account for pair production. 
-      //Dom Estimates that the somwhere above 0.28 MeV will be a good cut but 999 will prevent this stage.
-      double dEdx = dEdx_vec[dEdx_iter];
-
-      //We are really poo at physics and so attempt to find the pair production
-      if(upperbound){
-	if(dEdx > fdEdxCut){
-	  dEdx_val.push_back(dEdx);
-	  std::cout << "Adding dEdx: "<< dEdx<< std::endl;
-	  continue;
-	}
-	else{
-	  //Maybe its a landau fluctation lets try again.
-	  if(dEdx_iter < dEdx_vec.size()-1){
-	    if(dEdx_vec[dEdx_iter+1] > fdEdxCut){
-	      std::cout << "Next dEdx hit is good removing hit"<< dEdx<< std::endl;
-	      continue;
-	    }
-	  }
-	  //I'll let one more value 
-	  if(dEdx_iter<dEdx_vec.size()-2){
-	    if(dEdx_vec[dEdx_iter+2] > fdEdxCut){
-	      std::cout << "Next Next dEdx hit is good removing hit"<< dEdx<< std::endl;
-	      continue;
-	    }
-	  }
-	  //We are hopefully we have one of our electrons has died.
-	  break;
-	}
-      }
-      else{
-	if(dEdx < fdEdxCut){
-	  dEdx_val.push_back(dEdx);
-	  std::cout << "Adding dEdx: "<< dEdx<< std::endl;
-	  continue;
-	}
-	else{
-	  //Maybe its a landau fluctation lets try again.
-	  if(dEdx_iter < dEdx_vec.size()-1){
-	    if(dEdx_vec[dEdx_iter+1] > fdEdxCut){
-	      std::cout << "Next dEdx hit is good removing hit "<< dEdx<< std::endl;
-	      continue;
-	    }
-	  }
-	  //I'll let one more value 
-	  if(dEdx_iter < dEdx_vec.size()-2){
-	    if(dEdx_vec[dEdx_iter+2] > fdEdxCut){
-	      std::cout << "Next Next dEdx hit is good removing hit "<< dEdx<< std::endl;
-	      continue;
-	    }
-	  }
-	  //We are hopefully in the the pair production zone. 
-	  break;
-	}
-      }
-    }
-    return;
-  }
-  
 }
 
 DEFINE_ART_CLASS_TOOL(ShowerRecoTools::ShowerSlidingStandardCalodEdx)

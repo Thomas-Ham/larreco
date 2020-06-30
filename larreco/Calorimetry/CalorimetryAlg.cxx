@@ -148,7 +148,7 @@ namespace calo{
   }
   double CalorimetryAlg::dEdx_from_dQdx_e(double dQdx_e, double time, double T0, double Efield) const
   {
-    if (fDoLifeTimeCorrection)
+    if (fDoLifeTimeCorrection){
       dQdx_e *= LifetimeCorrection(time, T0);   // Lifetime Correction (dQdx_e in e/cm)
     }
     if(fUseModBox) {

@@ -76,6 +76,8 @@ class shower::TRACSAlg {
 
     double SpacePointCharge(art::Ptr<recob::SpacePoint> const& sp, art::FindManyP<recob::Hit> const& fmh) const;
 
+    double TotalCorrectedCharge(std::vector<art::Ptr<recob::SpacePoint> > const& sps, art::FindManyP<recob::Hit> const& fmh) const; 
+
     double SpacePointTime(art::Ptr<recob::SpacePoint> const& sp, art::FindManyP<recob::Hit> const& fmh) const;
 
     TVector2 HitCoordinates(art::Ptr<recob::Hit> const& hit) const;
