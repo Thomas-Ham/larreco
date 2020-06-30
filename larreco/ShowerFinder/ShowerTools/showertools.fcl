@@ -54,6 +54,7 @@ showerlinearenergy:{
     BaseTools: @local::showerbasetools
     CalorimetryAlg: @local::sbnd_calorimetryalgmc #calorimetry fcls get overwritten in sbnd # @local::standard_calorimetryalgmc
     PFParticleModuleLabel: "pandora"
+    SCECorrectEField:     false
     }
 
 
