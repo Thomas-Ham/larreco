@@ -74,10 +74,10 @@ namespace ShowerRecoTools {
     double localEfield           = 0;
     double localEfield_cweighted = 0;
     
-    int showernum = 0;
+    unsigned int showernum = 0;
     art::SubRunNumber_t subRunN;
     art::EventNumber_t EventN;
-    int hitsize;
+    unsigned int hitsize;
 
     // vec to store subrun #, event #, shower #, # of hits and energy
     std::vector<std::tuple<unsigned int, unsigned int, unsigned int, unsigned int, double>> n_hit_energy; // more useful when making plots
@@ -96,7 +96,7 @@ namespace ShowerRecoTools {
     {
      // The TFileService lets us define a tree and takes care of writing it to file
     art::ServiceHandle<art::TFileService> tfs;
-    m_file = new TFile("RecoEfromNumElectrons.root", "RECREATE"); 
+    m_file = new TFile("RecoEfromNumElectrons.root", "UPDATE"); 
     fOutputTree    = tfs->make<TTree>("recoenergy","Reco Energy");
 
     //add branches                                                                                                                                                   
@@ -104,7 +104,7 @@ namespace ShowerRecoTools {
     fOutputTree->Branch("Event", &EventN, "Event/i");
     fOutputTree->Branch("ShowerN", &showernum, "ShowerN/i");
     fOutputTree->Branch("NHits", &hitsize, "NHits/i");
-    fOutputTree->Branch("Energy", &Energy, "Event/d");
+    fOutputTree->Branch("Energy", &Energy, "Eventd");
 
     }
 

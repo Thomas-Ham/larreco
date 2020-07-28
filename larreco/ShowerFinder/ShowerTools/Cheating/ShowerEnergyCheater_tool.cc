@@ -23,6 +23,10 @@
 #include "lardataobj/RecoBase/Cluster.h"
 #include "nusimdata/SimulationBase/MCTruth.h"
 
+//ROOT Inclides
+#include "TFile.h"
+#include "TTree.h"
+
 //C++ Includes
 #include <iostream>
 #include <cmath>
@@ -47,52 +51,72 @@ namespace ShowerRecoTools {
 
     private:
 
-      //Algorithm functions
-      shower::TRACSCheatingAlg fTRACSCheatingAlg;
+        void FindLargestShower(std::vector<std::tuple<unsigned int, unsigned int, unsigned int, unsigned int, double>> energy_largest_shower);     
 
-      //FCL
-      art::InputTag fPFParticleModuleLabel;
-      art::InputTag fHitModuleLabel;
+        //Algorithm functions
+        shower::TRACSCheatingAlg fTRACSCheatingAlg;
+
+        //FCL
+        art::InputTag fPFParticleModuleLabel;
+        art::InputTag fHitModuleLabel;
  
- 
-			std::vector<double> plane2_energy;
+        unsigned int showernum = 0;
+        art::SubRunNumber_t subRunN;                                                                                             
+        art::EventNumber_t EventN; 
+        unsigned int hitsize;
+        double trueEnergy;
 
-			int showernum = 0;
-			std::vector<std::pair<int,std::pair< int, unsigned int>>> hit_energy_vec;
-			//std::vector<std::pair<int, std::pair<int, double>>> n_hit_energy;
-			std::vector<std::tuple<int, int, int, int, double>> n_hit_energy;
+	std::vector<std::tuple<unsigned int, unsigned int, unsigned int, unsigned int, double>> n_hit_energy;
 
+        TFile *m_file;    ///< TFile for saving event information                                                               
+        TTree *fOutputTree;  
  };
 
 
-  ShowerEnergyCheater::ShowerEnergyCheater(const fhicl::ParameterSet& pset) :
-    IShowerTool(pset.get<fhicl::ParameterSet>("BaseTools")),
-    fTRACSCheatingAlg(pset.get<fhicl::ParameterSet>("TRACSCheatingAlg")),
-    fPFParticleModuleLabel(pset.get<art::InputTag>("PFParticleModuleLabel","")),
-    fHitModuleLabel(pset.get<art::InputTag>("HitModuleLabel"))
-  {
-  }
+    ShowerEnergyCheater::ShowerEnergyCheater(const fhicl::ParameterSet& pset) :
+        IShowerTool(pset.get<fhicl::ParameterSet>("BaseTools")),
+        fTRACSCheatingAlg(pset.get<fhicl::ParameterSet>("TRACSCheatingAlg")),
+        fPFParticleModuleLabel(pset.get<art::InputTag>("PFParticleModuleLabel","")),
+        fHitModuleLabel(pset.get<art::InputTag>("HitModuleLabel"))
+    {
+        // The TFileService lets us define a tree and takes care of writing it to file          
+        art::ServiceHandle<art::TFileService> tfs;                                                                                                                       
+        m_file      = new TFile("RecoEfromNumElectrons.root", "UPDATE");                          
+        fOutputTree = tfs->make<TTree>("energy_cheater","Energy Cheater");                                                          
 
-  ShowerEnergyCheater::~ShowerEnergyCheater()
-  {
-  }
+        //add branches                                                                      
+        fOutputTree->Branch("Subrun", &subRunN, "Subrun/i");                                          
+        fOutputTree->Branch("Event", &EventN, "Event/i");                                      
+        fOutputTree->Branch("ShowerN", &showernum, "ShowerN/i");                                        
+        fOutputTree->Branch("NHits", &hitsize, "NHits/i");                      
+        fOutputTree->Branch("Energy", &trueEnergy, "Energy/d");   
+    }
 
-  int ShowerEnergyCheater::CalculateElement(const art::Ptr<recob::PFParticle>& pfparticle, 
+    ShowerEnergyCheater::~ShowerEnergyCheater()
+    {
+        m_file->cd();                                                                                   
+        fOutputTree->CloneTree()->Write("energy_cheater"); 
+
+        bool find_largest_shower = true;                                                                                         
+        if(find_largest_shower){                                                                            
+            FindLargestShower(n_hit_energy);                                                                                                    
+        }     
+
+        m_file->Close();
+    }
+
+    int ShowerEnergyCheater::CalculateElement(const art::Ptr<recob::PFParticle>& pfparticle, 
 						   art::Event& Event, 
 						   reco::shower::ShowerElementHolder& ShowerEleHolder){
 
-
-    //const simb::MCParticle* trueParticle;
-
     std::cout << "~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Shower Energy Cheater ~~~~~~~~~~~~~~~~~~~~~~~~~~~~" << std::endl;
 
-		showernum = ShowerEleHolder.GetShowerNumber();
+    showernum = ShowerEleHolder.GetShowerNumber();
 		
-		// get subrun number
-		art::SubRunNumber_t subRunN = Event.subRun();
-		// get event number 
-		art::EventNumber_t EventN = Event.id().event();
-
+    // get subrun number
+    subRunN = Event.subRun();
+    // get event number 
+    EventN = Event.id().event();
 
     //Could store these in the shower element holder and just calculate once?
     std::map<int,const simb::MCParticle*> trueParticles = fTRACSCheatingAlg.GetTrueParticleMap();
@@ -121,72 +145,113 @@ namespace ShowerRecoTools {
     std::vector<art::Ptr<recob::Hit> > showerHits;
     //std::map<geo::View_t, std::vector<art::Ptr<recob::Hit> >> showerHits;	
 
-		for(auto const& cluster: clusters){
-      // Get the view.
-      geo::View_t view = cluster->View();
+    for(auto const& cluster: clusters){
+        // Get the view.
+        geo::View_t view = cluster->View();
 
-      //if(view==2){
-      
-
-      //Get the hits
+        //Get the hits
         std::vector<art::Ptr<recob::Hit> > hits = fmhc.at(cluster.key());
 
-			
-
-       showerHits.insert(showerHits.end(),hits.begin(),hits.end());
-			 if(view == 2){
-				std::cout << "shower num: " << showernum << "		view: " << view << "   shower hits: " << showerHits.size() << std::endl; // note, prints the view in seemingly random order 
-     	 }
-		 					
-		
+        showerHits.insert(showerHits.end(),hits.begin(),hits.end());
+            if(view == 2){
+	        std::cout << "shower num: " << showernum << "		view: " << view << "   shower hits: " << showerHits.size() << std::endl; // note, prints the view in seemingly random order 
+     	        }
 	}
 
-		//Get the true particle from the shower - number specifies plane
-    std::pair<int,double> ShowerTrackInfo = fTRACSCheatingAlg.TrueParticleIDFromTrueChain(showersMothers,showerHits,2);
+	//Get the true particle from the shower - number specifies plane
+        // Gets (shower id, deposited shower energy) in the plane
+        std::pair<int,double> ShowerTrackInfo = fTRACSCheatingAlg.TrueParticleIDFromTrueChain(showersMothers,showerHits,2);
+        
+        if(ShowerTrackInfo.first==-99999) {
+        	mf::LogError("ShowerEnergyCheater") << "True Shower Not Found";
+        return 1;
+        }
 
-		std::cout << "First:" << ShowerTrackInfo.first << " Second: " << ShowerTrackInfo.second << std::endl;
+        trueEnergy = 0;
+        // Get true energy of showering particle 
+	const simb::MCParticle* trueParticle = trueParticles[ShowerTrackInfo.first];
+        trueEnergy = trueParticle->E() * 1000; // change to MeV
+	std::cout << "shower num = " << showernum << "	true energy = " << trueEnergy << std::endl; 
 		
-	
-		
-		const simb::MCParticle* trueParticle = trueParticles[ShowerTrackInfo.first];
-		//if(/*trueParticle->PdgCode() == 11 ||*/ trueParticle->PdgCode() == 22){ 
-		double trueEnergy = trueParticle->E() * 1000; // change to MeV
-		std::cout << "shower num = " << showernum << "	true energy = " << trueEnergy << std::endl; 
-		//std::cout << "trueParticles = " << *trueParticle << std::endl;
-//	}
-	
-		
-		if(ShowerTrackInfo.first==-99999) {
-    	mf::LogError("ShowerEnergyCheater") << "True Shower Not Found";
-      return 1;
-    }
-	
+	//Holder for the final product
+	std::vector<double> ShowerEnergyCheater;
+	ShowerEnergyCheater.push_back(trueEnergy);
 
-		//Holder for the final product
-		std::vector<double> ShowerEnergyCheater;
-		ShowerEnergyCheater.push_back(trueEnergy);
-
-		std::vector<double> EnergyError = {-999,-999,-999};
+	std::vector<double> EnergyError = {-999,-999,-999};
 		 
-		ShowerEleHolder.SetElement(ShowerEnergyCheater,EnergyError,"ShowerEnergyCheater");
+	ShowerEleHolder.SetElement(ShowerEnergyCheater,EnergyError,"ShowerEnergyCheater");
 
+	hitsize = showerHits.size();
+        
+        // check showers are coming from a photon/electron        
+//	if(abs(trueParticle->PdgCode()) == 11 || trueParticle->PdgCode() == 22){ 
+            n_hit_energy.push_back(std::make_tuple(subRunN ,EventN, showernum, hitsize, trueEnergy));
+ //       }
 
-
-		double hitSize = showerHits.size();
-		//plane2_energy.push_back(ShowerTrackInfo.second);
-		//plane2_energy.push_back(std::make_pair(showernum, trueEnergy));
-		n_hit_energy.push_back(std::make_tuple(subRunN ,EventN, showernum, hitSize, trueEnergy));
-		// Make a .txt file with the truth energies from the plane
-		std::ofstream outfile2;
-		outfile2.open("truth_hit_energy_vec_spacecharge.txt");
-		for (auto i = n_hit_energy.begin(); i != n_hit_energy.end(); ++i){
-			//std::cout << i->first << "	" i->second->first << std::endl;
-
-			outfile2 << std::get<0>(*i) << "		" << std::get<1>(*i) << "		" << std::get<2>(*i) << "		" << std::get<3>(*i) << "		" << std::get<4>(*i) << std::endl;
-    }
+        fOutputTree->Fill();
+        bool save_to_file = false;
+        if(save_to_file){
+            std::ofstream outfile2;
+	    outfile2.open("truth_TEST_NEW.txt");
+	    for (auto i = n_hit_energy.begin(); i != n_hit_energy.end(); ++i){
+                //std::cout << i->first << "	" i->second->first << std::endl;
+                outfile2 << std::get<0>(*i) << "	" << std::get<1>(*i) << "	" << std::get<2>(*i) << "	" << std::get<3>(*i) << "	" << std::get<4>(*i) << std::endl;
+            }
+        }
 	
 	return 0;
   }
+
+
+// Function to find only the largest shower
+void ShowerEnergyCheater::FindLargestShower(std::vector<std::tuple<unsigned int, unsigned int, unsigned int, unsigned int, double>> energy_largest_shower){
+    // Cut showers so we are only left with the biggest (most hits) from each event.
+    // Feel like there should be a more ROOT-y way to do this...
+    unsigned int i = 0;                                                                 
+    while(i < energy_largest_shower.size()){  
+
+        // If the shower at (i-1)'th position from the same event has fewer hits, delete it
+        if(std::get<2>(energy_largest_shower[i]) != 0 && std::get<3>(energy_largest_shower[i]) > std::get<3>(energy_largest_shower[(i-1)])){   
+
+            energy_largest_shower.erase(energy_largest_shower.begin() + (i-1));   
+        }
+        // Delete any remaining i'th non primary shower (i.e. the non primary shower which has fewer hits than the one at (i-1))
+        else if(std::get<2>(energy_largest_shower[i]) != 0){ 
+    
+            energy_largest_shower.erase(energy_largest_shower.begin() + (i));
+        }
+
+        else{
+            i++;
+        }
+    }
+
+
+    // Add new tree to root file which has only the largest shower from each event
+    TTree *energy_cheater_LS = new TTree("energy_cheater_LS", "Energy Cheater Largest Shower");
+
+    energy_cheater_LS->Branch("Subrun", &subRunN, "Subrun/i");                                                                              
+    energy_cheater_LS->Branch("Event", &EventN, "Event/i");    
+    energy_cheater_LS->Branch("ShowerN", &showernum, "ShowerN/i");
+    energy_cheater_LS->Branch("NHits", &hitsize, "NHits/i");                                                     
+    energy_cheater_LS->Branch("Energy", &trueEnergy, "Energy/d"); 
+
+    for(unsigned int i = 0; i < energy_largest_shower.size(); i++){
+        subRunN    = std::get<0>(energy_largest_shower[i]);
+        EventN     = std::get<1>(energy_largest_shower[i]);
+        showernum  = std::get<2>(energy_largest_shower[i]);
+        hitsize    = std::get<3>(energy_largest_shower[i]);
+        trueEnergy = std::get<4>(energy_largest_shower[i]);
+
+        energy_cheater_LS->Fill();
+    }
+
+    m_file->Write("", TObject::kOverwrite); // save only the new version of the tree - without the arguments was duplicating original tree
+
 }
+
+
+
+} // namespace 
 
 DEFINE_ART_CLASS_TOOL(ShowerRecoTools::ShowerEnergyCheater)
