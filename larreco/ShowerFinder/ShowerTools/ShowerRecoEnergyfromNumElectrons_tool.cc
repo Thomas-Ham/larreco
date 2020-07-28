@@ -29,13 +29,14 @@
 #include "larcoreobj/SimpleTypesAndConstants/PhysicalConstants.h"
 #include "larreco/Calorimetry/CalorimetryAlg.h"
 
-//#include "larevt/SpaceChargeServices/SpaceChargeService.h"
+// ROOT includes
+#include "TFile.h"
+#include "TTree.h" 
 
 //C++ Includes
 #include <iostream>
 #include <vector>
 #include <tuple>
-
 
 namespace ShowerRecoTools {
 
@@ -45,18 +46,19 @@ namespace ShowerRecoTools {
 
     ShowerRecoEnergyfromNumElectrons(const fhicl::ParameterSet& pset);
     
-    ~ShowerRecoEnergyfromNumElectrons();
-    
+    ~ShowerRecoEnergyfromNumElectrons(); 
+        
     //Physics Function. Calculate the shower Energy.
     int CalculateElement(const art::Ptr<recob::PFParticle>& pfparticle,
     art::Event& Event,
     reco::shower::ShowerElementHolder& ShowerElementHolder
     ) override;
-	
+
     private:
     
     double CalculateEnergy(std::vector<art::Ptr<recob::Hit> >& hits, geo::View_t& view);
-    
+    void FindLargestShower(std::vector<std::tuple<unsigned int, unsigned int, unsigned int, unsigned int, double>> recoenergy_largest_shower);    
+ 
     art::InputTag fPFParticleModuleLabel;
 
     //Services
@@ -71,13 +73,19 @@ namespace ShowerRecoTools {
     double nominal_Efield        = 0;
     double localEfield           = 0;
     double localEfield_cweighted = 0;
+    
+    int showernum = 0;
+    art::SubRunNumber_t subRunN;
+    art::EventNumber_t EventN;
+    int hitsize;
 
     // vec to store subrun #, event #, shower #, # of hits and energy
-    std::vector<std::tuple<int, int, int, int, double>> n_hit_energy; // more useful when making plots
+    std::vector<std::tuple<unsigned int, unsigned int, unsigned int, unsigned int, double>> n_hit_energy; // more useful when making plots
 		
-    int showernum = 0;
-	
-};
+    TFile *m_file;    ///< TFile for saving event information  
+    TTree *fOutputTree;
+
+}; // class
 
     ShowerRecoEnergyfromNumElectrons::ShowerRecoEnergyfromNumElectrons(const fhicl::ParameterSet& pset) :
     IShowerTool(pset.get<fhicl::ParameterSet>("BaseTools")),
@@ -85,12 +93,37 @@ namespace ShowerRecoTools {
     detprop(lar::providerFrom<detinfo::DetectorPropertiesService>()),
     fCalorimetryAlg(pset.get<fhicl::ParameterSet>("CalorimetryAlg")),
     fSCECorrectEField(pset.get<bool>("SCECorrectEField"))
-    //fSCE(lar::providerFrom<spacecharge::SpaceChargeService>())
-    { 
+    {
+     // The TFileService lets us define a tree and takes care of writing it to file
+    art::ServiceHandle<art::TFileService> tfs;
+    m_file = new TFile("RecoEfromNumElectrons.root", "RECREATE"); 
+    fOutputTree    = tfs->make<TTree>("recoenergy","Reco Energy");
+
+    //add branches                                                                                                                                                   
+    fOutputTree->Branch("Subrun", &subRunN, "Subrun/i");
+    fOutputTree->Branch("Event", &EventN, "Event/i");
+    fOutputTree->Branch("ShowerN", &showernum, "ShowerN/i");
+    fOutputTree->Branch("NHits", &hitsize, "NHits/i");
+    fOutputTree->Branch("Energy", &Energy, "Event/d");
+
     }
 
     ShowerRecoEnergyfromNumElectrons::~ShowerRecoEnergyfromNumElectrons()
-    { 
+    {
+    //store output tree                                                                                                                                              
+    m_file->cd();                                                                                                                                                    
+    fOutputTree->CloneTree()->Write("recoenergy");
+
+    // Find only the largest shower from each event and write to the output file
+    // To find the largest shower need to compare with the previous one and since the tool iterates over them one at a time 
+    // we need to run at the end once we've looked at all the showers (hence we're in the destructor since it runs at the end).
+    bool find_largest_shower = true;
+    if(find_largest_shower){
+        FindLargestShower(n_hit_energy);
+    }
+
+    m_file->Close();
+
     }
 
     int ShowerRecoEnergyfromNumElectrons::CalculateElement(const art::Ptr<recob::PFParticle>& pfparticle,
@@ -98,18 +131,17 @@ namespace ShowerRecoTools {
     reco::shower::ShowerElementHolder& ShowerEleHolder
     ){
 
-
     std::cout << "~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Shower Reco Energy Tool ~~~~~~~~~~~~~~~~~~~~~~~~~~~~" << std::endl;
-		
+
     // get shower number per event
     showernum = ShowerEleHolder.GetShowerNumber();
 
     // get subrun number
-    art::SubRunNumber_t subRunN = Event.subRun();
+    subRunN = Event.subRun();
 
     // get event number 
-    art::EventNumber_t EventN = Event.id().event();
-		
+    EventN = Event.id().event();
+    
     //ShowerEleHolder.PrintElements();
 
     //Holder for the final product
@@ -146,32 +178,13 @@ namespace ShowerRecoTools {
     art::FindManyP<recob::SpacePoint> fmsp(pfpHandle, Event, fPFParticleModuleLabel);
     std::vector<art::Ptr<recob::SpacePoint> > spacepoints = fmsp.at(pfparticle.key());
 
-    /*
-    // variables to hold position of spacepoints
-    double X = 0, Y = 0, Z = 0;
-    // loop over the space points 
-    for (auto const &sps : spacepoints){
-        // sum up all the XYZ positions of the spacepoints 
-        X += sps->XYZ()[0];
-        Y += sps->XYZ()[1];
-        Z += sps->XYZ()[2];
-    }
-
-    // Get the average spacepoint postions - (consider charge weighting this in the future)
-    X = X/spacepoints.size();
-    Y = Y/spacepoints.size();
-    Z = Z/spacepoints.size();
-    std::cout << "number of spacepoints = " << spacepoints.size() << std::endl;
-    std::cout << "X = " << X << "       Y = " << Y << "     Z = " << Z << std::endl;
-    */
-    
-    // Get shower centre (remove above at some point)
+    // Get shower centre 
     TVector3 showercentre = IShowerTool::GetTRACSAlg().ShowerCentre(spacepoints);
     std::cout << "shower centre = (" << showercentre[0] << ", " << showercentre[1] << ", " << showercentre[2] << ")" << std::endl;    
 
-     // Get E-field -  Electric Field in the drift region in KV/cm
+    // Get E-field -  Electric Field in the drift region in KV/cm
     nominal_Efield  = detprop->Efield(); // Nominal E-field
-    std::cout << "EField = " << nominal_Efield << std::endl;
+    std::cout << "Nominal EField = " << nominal_Efield << std::endl;
     
     // Get hit association for spacepoints
     art::FindManyP<recob::Hit> fmhsp(spHandle, Event, fPFParticleModuleLabel);
@@ -223,7 +236,6 @@ namespace ShowerRecoTools {
 		
     std::map<unsigned int, double > view_energies;
     std::vector<art::Ptr<recob::Hit>> hits;
-  
     //Accounting for events crossing the cathode.
     for(auto const& view_hit_iter: view_hits){
  	
@@ -232,7 +244,8 @@ namespace ShowerRecoTools {
  	
         //Calculate the Energy
         Energy = CalculateEnergy(hits,view);
-        //std::cout << "hits = " << hits.size() << std::endl;
+        
+        hitsize = hits.size();
 		
         // Print out the energy for each plane
         std::cout<<"View: "<< view <<  " and energy: "<<Energy<<std::endl;;
@@ -246,25 +259,25 @@ namespace ShowerRecoTools {
     //TODO think of a better way of doing this
     for (unsigned int plane=0; plane<numPlanes; ++plane) {
        
-    try{
-        Energy = view_energies.at(plane);
-        if (Energy<0){
-            mf::LogWarning("ShowerLinearEnergy") << "Negative shower energy: "<<Energy;
-            Energy=-999;
-        }
-        if(plane == 2){
-            n_hit_energy.push_back(std::make_tuple(subRunN ,EventN, showernum, hits.size(), Energy)); //save info for collection plane
-        }   
+        try{
+            Energy = view_energies.at(plane);
+            if (Energy<0){
+                mf::LogWarning("ShowerLinearEnergy") << "Negative shower energy: "<<Energy;
+                Energy=-999;
+             }
+            if(plane == 2){
+                n_hit_energy.push_back(std::make_tuple(subRunN ,EventN, showernum, hitsize, Energy)); //save info for collection plane
+            }   
         } 
 
-    catch(...){
-    mf::LogWarning("ShowerLinearEnergy") <<"No energy calculation for plane "<<plane<<std::endl;
-    // if there's no calculation, set the energy to -999.
-    Energy = -999;
-    if(plane == 2){
-        n_hit_energy.push_back(std::make_tuple(subRunN, EventN, showernum, hits.size(), Energy)); //save info for collection plane
-    }
-    }              	
+        catch(...){
+            mf::LogWarning("ShowerLinearEnergy") <<"No energy calculation for plane "<<plane<<std::endl;
+            // if there's no calculation, set the energy to -999.
+            Energy = -999;
+            if(plane == 2){
+                n_hit_energy.push_back(std::make_tuple(subRunN, EventN, showernum, hitsize, Energy)); //save info for collection plane
+            }
+        }              	
     ShowerRecoEnergyfromNumElectrons.push_back(Energy);   
     }
  
@@ -276,14 +289,15 @@ namespace ShowerRecoTools {
     std::vector<double> EnergyError = {-999,-999,-999};
 	 
     ShowerEleHolder.SetElement(ShowerRecoEnergyfromNumElectrons,EnergyError,"ShowerEnergy");
-	
+ 
+    fOutputTree->Fill();
 
     bool write_to_file = true; 
     // Make a .txt file with the subrun, event number, showernum, hits and energies from the plane
     // Useful info when making plots
     if(write_to_file){
         std::ofstream outfile;
-        outfile.open("reco_hit_energy_vec_corrected.txt");
+        outfile.open("Energy_files/reco_energy_SC_anode_recombtweak.txt");
         for (auto i = n_hit_energy.begin(); i != n_hit_energy.end(); ++i){	
             outfile << std::get<0>(*i) << "		" << std::get<1>(*i) << "		" << std::get<2>(*i) << "		" << std::get<3>(*i) << "		" << std::get<4>(*i) << std::endl;
         }
@@ -326,11 +340,65 @@ double ShowerRecoEnergyfromNumElectrons::CalculateEnergy(std::vector<art::Ptr<re
     totalEnergy = (nElectrons / util::kGeVToElectrons) * 1000; // energy in MeV
     return totalEnergy;
  
+}
+
+// Function to find only the largest shower
+void ShowerRecoEnergyfromNumElectrons::FindLargestShower(std::vector<std::tuple<unsigned int, unsigned int, unsigned int, unsigned int, double>> recoenergy_largest_shower){
+    // Cut showers so we are only left with the biggest (most hits) from each event.
+    // Feel like there should be a more ROOT-y way to do this...
+    unsigned int i = 0;                                                                 
+    while(i < recoenergy_largest_shower.size()){  
+
+        // If the shower at (i-1)'th position from the same event has fewer hits, delete it
+        if(std::get<2>(recoenergy_largest_shower[i]) != 0 && std::get<3>(recoenergy_largest_shower[i]) > std::get<3>(recoenergy_largest_shower[(i-1)])){   
+
+            recoenergy_largest_shower.erase(recoenergy_largest_shower.begin() + (i-1));   
+        }
+        // Delete any remaining i'th non primary shower (i.e. the non primary shower which has fewer hits than the one at (i-1))
+        else if(std::get<2>(recoenergy_largest_shower[i]) != 0){ 
+    
+            recoenergy_largest_shower.erase(recoenergy_largest_shower.begin() + (i));
+        }
+
+        else{
+            i++;
+        }
     }
 
 
+    // Add new tree to root file which has only the largest shower from each event
+    TTree *recoenergy_LS = new TTree("recoenergy_LS", "Reco Energy Largest Shower");
+
+    recoenergy_LS->Branch("Subrun", &subRunN, "Subrun/i");                                                                              
+    recoenergy_LS->Branch("Event", &EventN, "Event/i");    
+    recoenergy_LS->Branch("ShowerN", &showernum, "ShowerN/i");
+    recoenergy_LS->Branch("NHits", &hitsize, "NHits/i");                                                     
+    recoenergy_LS->Branch("Energy", &Energy, "Energy/d"); 
+
+    for(unsigned int i = 0; i < recoenergy_largest_shower.size(); i++){
+        subRunN   = std::get<0>(recoenergy_largest_shower[i]);
+        EventN    = std::get<1>(recoenergy_largest_shower[i]);
+        showernum = std::get<2>(recoenergy_largest_shower[i]);
+        hitsize   = std::get<3>(recoenergy_largest_shower[i]);
+        Energy    = std::get<4>(recoenergy_largest_shower[i]);
+
+        recoenergy_LS->Fill();
+    }
+
+    m_file->Write("", TObject::kOverwrite); // save only the new version of the tree - without the arguments was duplicating original tree
+
 }
 
+} // namespace
+
 DEFINE_ART_CLASS_TOOL(ShowerRecoTools::ShowerRecoEnergyfromNumElectrons)
+
+
+
+
+
+
+
+
 
 

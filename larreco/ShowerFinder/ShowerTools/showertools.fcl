@@ -277,6 +277,15 @@ showerdirectioncheater:{
     ShowerDirectionOuputLabel:     "ShowerDirection"
     }
 
+showerenergycheater:{
+    tool_type:               ShowerEnergyCheater
+    BaseTools:           @local::showerbasetools
+    TRACSCheatingAlg:    @local::standard_tracscheatingalg
+    PFParticleModuleLabel:  "pandora"
+    HitModuleLabel:         "linecluster"
+}
+
+
 showertrackfindercheater:{
     tool_type:               ShowerTrackFinderCheater
     BaseTools:           @local::showerbasetools
@@ -354,5 +363,12 @@ tool_type: ShowerResidualTrackHitFinder
              InitialTrackSpacePointsOutputLabel: "InitialTrackSpacePoints"
              ShowerDirectionInputLabel: "ShowerDirection"
 }
+
+showergenerictool:{
+tool_type: ShowerGenericTool
+             BaseTools: @local::showerbasetools
+             PFParticleModuleLabel: "pandora"
+}
+
 
 END_PROLOG
