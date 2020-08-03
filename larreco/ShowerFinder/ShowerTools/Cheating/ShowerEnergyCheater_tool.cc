@@ -51,7 +51,7 @@ namespace ShowerRecoTools {
 
     private:
 
-        void FindLargestShower(std::vector<std::tuple<unsigned int, unsigned int, unsigned int, unsigned int, double>> energy_largest_shower);     
+        void FindLargestShower(std::vector<std::tuple<unsigned int, unsigned int, unsigned int, int, double>> energy_largest_shower);     
 
         //Algorithm functions
         shower::TRACSCheatingAlg fTRACSCheatingAlg;
@@ -63,10 +63,10 @@ namespace ShowerRecoTools {
         unsigned int showernum = 0;
         art::SubRunNumber_t subRunN;                                                                                             
         art::EventNumber_t EventN; 
-        unsigned int hitsize;
+        int hitsize;
         double trueEnergy;
 
-	std::vector<std::tuple<unsigned int, unsigned int, unsigned int, unsigned int, double>> n_hit_energy;
+	std::vector<std::tuple<unsigned int, unsigned int, unsigned int, int, double>> n_hit_energy;
 
         TFile *m_file;    ///< TFile for saving event information                                                               
         TTree *fOutputTree;  
@@ -81,21 +81,21 @@ namespace ShowerRecoTools {
     {
         // The TFileService lets us define a tree and takes care of writing it to file          
         art::ServiceHandle<art::TFileService> tfs;                                                                                                                       
-        m_file      = new TFile("RecoEfromNumElectrons.root", "UPDATE");                          
+        m_file      = new TFile("EnergyfromNumElectrons.root", "UPDATE");                          
         fOutputTree = tfs->make<TTree>("energy_cheater","Energy Cheater");                                                          
 
         //add branches                                                                      
         fOutputTree->Branch("Subrun", &subRunN, "Subrun/i");                                          
         fOutputTree->Branch("Event", &EventN, "Event/i");                                      
         fOutputTree->Branch("ShowerN", &showernum, "ShowerN/i");                                        
-        fOutputTree->Branch("NHits", &hitsize, "NHits/i");                      
+        fOutputTree->Branch("NHits", &hitsize, "NHits/I");                      
         fOutputTree->Branch("Energy", &trueEnergy, "Energy/d");   
     }
 
     ShowerEnergyCheater::~ShowerEnergyCheater()
     {
         m_file->cd();                                                                                   
-        fOutputTree->CloneTree()->Write("energy_cheater"); 
+        fOutputTree->CloneTree()->Write("energy_cheater", TObject::kOverwrite); 
 
         bool find_largest_shower = true;                                                                                         
         if(find_largest_shower){                                                                            
@@ -150,61 +150,55 @@ namespace ShowerRecoTools {
         geo::View_t view = cluster->View();
 
         //Get the hits
-        std::vector<art::Ptr<recob::Hit> > hits = fmhc.at(cluster.key());
+        showerHits = fmhc.at(cluster.key());
 
-        showerHits.insert(showerHits.end(),hits.begin(),hits.end());
-            if(view == 2){
-	        std::cout << "shower num: " << showernum << "		view: " << view << "   shower hits: " << showerHits.size() << std::endl; // note, prints the view in seemingly random order 
-     	        }
-	}
+        //showerHits.insert(showerHits.end(),hits.begin(),hits.end());
+        if(view == 2){
+	    hitsize = showerHits.size();
+     	}
+    }
 
-	//Get the true particle from the shower - number specifies plane
-        // Gets (shower id, deposited shower energy) in the plane
-        std::pair<int,double> ShowerTrackInfo = fTRACSCheatingAlg.TrueParticleIDFromTrueChain(showersMothers,showerHits,2);
-        
-        if(ShowerTrackInfo.first==-99999) {
-        	mf::LogError("ShowerEnergyCheater") << "True Shower Not Found";
-        return 1;
-        }
-
+    //Get the true particle from the shower - number specifies plane
+    // Gets (shower id, deposited shower energy) in the plane
+    //std::cout << "hitsize = " << hitsize << std::endl;
+    std::pair<int,double> ShowerTrackInfo = fTRACSCheatingAlg.TrueParticleIDFromTrueChain(showersMothers,showerHits,2);
+       
+    // Get the energy 
+    if(ShowerTrackInfo.first==-99999) {
+        mf::LogError("ShowerEnergyCheater") << "True Shower Not Found. Setting hits and energy to -999.";
+        hitsize    = -999;
+        trueEnergy = -999;
+        //return 1;
+    }
+    else{
         trueEnergy = 0;
         // Get true energy of showering particle 
-	const simb::MCParticle* trueParticle = trueParticles[ShowerTrackInfo.first];
+        const simb::MCParticle* trueParticle = trueParticles[ShowerTrackInfo.first];
         trueEnergy = trueParticle->E() * 1000; // change to MeV
-	std::cout << "shower num = " << showernum << "	true energy = " << trueEnergy << std::endl; 
+    }
+    std::cout << "Subrun = " << subRunN << "    Event = " << EventN << "    shower num = " << showernum << "    hits = " << hitsize <<  "    true energy = " << trueEnergy << std::endl; 
 		
-	//Holder for the final product
-	std::vector<double> ShowerEnergyCheater;
-	ShowerEnergyCheater.push_back(trueEnergy);
+    //Holder for the final product
+    std::vector<double> ShowerEnergyCheater;
+    ShowerEnergyCheater.push_back(trueEnergy);
 
-	std::vector<double> EnergyError = {-999,-999,-999};
-		 
-	ShowerEleHolder.SetElement(ShowerEnergyCheater,EnergyError,"ShowerEnergyCheater");
+    std::vector<double> EnergyError = {-999,-999,-999};
+	 
+    ShowerEleHolder.SetElement(ShowerEnergyCheater,EnergyError,"ShowerEnergyCheater");
 
-	hitsize = showerHits.size();
-        
-        // check showers are coming from a photon/electron        
-//	if(abs(trueParticle->PdgCode()) == 11 || trueParticle->PdgCode() == 22){ 
-            n_hit_energy.push_back(std::make_tuple(subRunN ,EventN, showernum, hitsize, trueEnergy));
- //       }
+    // check showers are coming from a photon/electron        
+    // if(abs(trueParticle->PdgCode()) == 11 || trueParticle->PdgCode() == 22){ 
+        n_hit_energy.push_back(std::make_tuple(subRunN ,EventN, showernum, hitsize, trueEnergy));
+    // }
 
-        fOutputTree->Fill();
-        bool save_to_file = false;
-        if(save_to_file){
-            std::ofstream outfile2;
-	    outfile2.open("truth_TEST_NEW.txt");
-	    for (auto i = n_hit_energy.begin(); i != n_hit_energy.end(); ++i){
-                //std::cout << i->first << "	" i->second->first << std::endl;
-                outfile2 << std::get<0>(*i) << "	" << std::get<1>(*i) << "	" << std::get<2>(*i) << "	" << std::get<3>(*i) << "	" << std::get<4>(*i) << std::endl;
-            }
-        }
+    fOutputTree->Fill();
 	
-	return 0;
-  }
+    return 0;
+    }
 
 
 // Function to find only the largest shower
-void ShowerEnergyCheater::FindLargestShower(std::vector<std::tuple<unsigned int, unsigned int, unsigned int, unsigned int, double>> energy_largest_shower){
+void ShowerEnergyCheater::FindLargestShower(std::vector<std::tuple<unsigned int, unsigned int, unsigned int, int, double>> energy_largest_shower){
     // Cut showers so we are only left with the biggest (most hits) from each event.
     // Feel like there should be a more ROOT-y way to do this...
     unsigned int i = 0;                                                                 
@@ -233,7 +227,7 @@ void ShowerEnergyCheater::FindLargestShower(std::vector<std::tuple<unsigned int,
     energy_cheater_LS->Branch("Subrun", &subRunN, "Subrun/i");                                                                              
     energy_cheater_LS->Branch("Event", &EventN, "Event/i");    
     energy_cheater_LS->Branch("ShowerN", &showernum, "ShowerN/i");
-    energy_cheater_LS->Branch("NHits", &hitsize, "NHits/i");                                                     
+    energy_cheater_LS->Branch("NHits", &hitsize, "NHits/I");                                                     
     energy_cheater_LS->Branch("Energy", &trueEnergy, "Energy/d"); 
 
     for(unsigned int i = 0; i < energy_largest_shower.size(); i++){

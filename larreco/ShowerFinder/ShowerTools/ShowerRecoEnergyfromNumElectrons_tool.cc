@@ -57,7 +57,7 @@ namespace ShowerRecoTools {
     private:
     
     double CalculateEnergy(std::vector<art::Ptr<recob::Hit> >& hits, geo::View_t& view);
-    void FindLargestShower(std::vector<std::tuple<unsigned int, unsigned int, unsigned int, unsigned int, double>> recoenergy_largest_shower);    
+    void FindLargestShower(std::vector<std::tuple<unsigned int, unsigned int, unsigned int, int, double>> recoenergy_largest_shower);    
  
     art::InputTag fPFParticleModuleLabel;
 
@@ -77,10 +77,10 @@ namespace ShowerRecoTools {
     unsigned int showernum = 0;
     art::SubRunNumber_t subRunN;
     art::EventNumber_t EventN;
-    unsigned int hitsize;
+    int hitsize;
 
     // vec to store subrun #, event #, shower #, # of hits and energy
-    std::vector<std::tuple<unsigned int, unsigned int, unsigned int, unsigned int, double>> n_hit_energy; // more useful when making plots
+    std::vector<std::tuple<unsigned int, unsigned int, unsigned int, int, double>> n_hit_energy; // more useful when making plots
 		
     TFile *m_file;    ///< TFile for saving event information  
     TTree *fOutputTree;
@@ -94,16 +94,16 @@ namespace ShowerRecoTools {
     fCalorimetryAlg(pset.get<fhicl::ParameterSet>("CalorimetryAlg")),
     fSCECorrectEField(pset.get<bool>("SCECorrectEField"))
     {
-     // The TFileService lets us define a tree and takes care of writing it to file
+    // The TFileService lets us define a tree and takes care of writing it to file
     art::ServiceHandle<art::TFileService> tfs;
-    m_file = new TFile("RecoEfromNumElectrons.root", "UPDATE"); 
-    fOutputTree    = tfs->make<TTree>("recoenergy","Reco Energy");
+    m_file      = new TFile("EnergyfromNumElectrons.root", "UPDATE"); 
+    fOutputTree = tfs->make<TTree>("recoenergy","Reco Energy");
 
     //add branches                                                                                                                                                   
     fOutputTree->Branch("Subrun", &subRunN, "Subrun/i");
     fOutputTree->Branch("Event", &EventN, "Event/i");
     fOutputTree->Branch("ShowerN", &showernum, "ShowerN/i");
-    fOutputTree->Branch("NHits", &hitsize, "NHits/i");
+    fOutputTree->Branch("NHits", &hitsize, "NHits/I");
     fOutputTree->Branch("Energy", &Energy, "Eventd");
 
     }
@@ -112,7 +112,7 @@ namespace ShowerRecoTools {
     {
     //store output tree                                                                                                                                              
     m_file->cd();                                                                                                                                                    
-    fOutputTree->CloneTree()->Write("recoenergy");
+    fOutputTree->CloneTree()->Write("recoenergy", TObject::kOverwrite);
 
     // Find only the largest shower from each event and write to the output file
     // To find the largest shower need to compare with the previous one and since the tool iterates over them one at a time 
@@ -180,11 +180,10 @@ namespace ShowerRecoTools {
 
     // Get shower centre 
     TVector3 showercentre = IShowerTool::GetTRACSAlg().ShowerCentre(spacepoints);
-    std::cout << "shower centre = (" << showercentre[0] << ", " << showercentre[1] << ", " << showercentre[2] << ")" << std::endl;    
 
     // Get E-field -  Electric Field in the drift region in KV/cm
     nominal_Efield  = detprop->Efield(); // Nominal E-field
-    std::cout << "Nominal EField = " << nominal_Efield << std::endl;
+    //std::cout << "Nominal EField = " << nominal_Efield << std::endl;
     
     // Get hit association for spacepoints
     art::FindManyP<recob::Hit> fmhsp(spHandle, Event, fPFParticleModuleLabel);
@@ -192,7 +191,7 @@ namespace ShowerRecoTools {
     // Get the charge weighted shower centre - sum(charge*position)/sum(charge)
     // Charge is obtained from the lifetime corrected hits and hits are obtained from the spacepoints 
     TVector3 chargecentre = IShowerTool::GetTRACSAlg().ShowerCentre(spacepoints, fmhsp);
-    std::cout << "charge centre = " << chargecentre[0] << ", " << chargecentre[1] << ", " << chargecentre[2] << std::endl;
+    //std::cout << "charge centre = " << chargecentre[0] << ", " << chargecentre[1] << ", " << chargecentre[2] << std::endl;
 
     // Enable SCE 
     fSCECorrectEField = true;
@@ -202,9 +201,9 @@ namespace ShowerRecoTools {
         // Think the charge weighted centre can take nan values which causes the E-field calculation to fail
         if(showercentre.Mag() >= 0 && chargecentre.Mag() >=0){ 
             localEfield = IShowerTool::GetTRACSAlg().SCECorrectEField(nominal_Efield, showercentre);
-            std::cout << "local efield = " << localEfield << std::endl;
+            //std::cout << "local efield = " << localEfield << std::endl;
             localEfield_cweighted = IShowerTool::GetTRACSAlg().SCECorrectEField(nominal_Efield, chargecentre);
-            std::cout << "local efield weighted = " << localEfield_cweighted << std::endl;
+            //std::cout << "local efield weighted = " << localEfield_cweighted << std::endl;
         }
         else{
             mf::LogWarning("ShowerRecoEnergyfromNumElectrons") << "Shower centre calculation doesn't look to be sensible. Reconstruction is probably dodgy." << std::endl;
@@ -229,7 +228,6 @@ namespace ShowerRecoTools {
 
     //Get the view.
     geo::View_t view = cluster->View();
-    //std::cout << "view = " << view << "	hits = " << hits.size() << std::endl;
 
     view_hits[view].insert(view_hits[view].end(),hits.begin(),hits.end());
     }
@@ -248,7 +246,7 @@ namespace ShowerRecoTools {
         hitsize = hits.size();
 		
         // Print out the energy for each plane
-        std::cout<<"View: "<< view <<  " and energy: "<<Energy<<std::endl;;
+        std::cout << "Subrun: " << subRunN << " Event: " << EventN << " ShowerNum: " << showernum << " View: "<< view << "  hitsize: " << hitsize  <<  " energy: " << Energy << std::endl;
 
        
         unsigned int viewNum = view;
@@ -262,7 +260,7 @@ namespace ShowerRecoTools {
         try{
             Energy = view_energies.at(plane);
             if (Energy<0){
-                mf::LogWarning("ShowerLinearEnergy") << "Negative shower energy: "<<Energy;
+                mf::LogWarning("ShowerLinearEnergy") << "Negative shower energy: "<<Energy << ". Setting the energy to -999." << std::endl;
                 Energy=-999;
              }
             if(plane == 2){
@@ -271,7 +269,7 @@ namespace ShowerRecoTools {
         } 
 
         catch(...){
-            mf::LogWarning("ShowerLinearEnergy") <<"No energy calculation for plane "<<plane<<std::endl;
+            mf::LogWarning("ShowerLinearEnergy") <<"No energy calculation for plane "<< plane << ". Setting the energy to -999." << std::endl;
             // if there's no calculation, set the energy to -999.
             Energy = -999;
             if(plane == 2){
@@ -292,16 +290,6 @@ namespace ShowerRecoTools {
  
     fOutputTree->Fill();
 
-    bool write_to_file = true; 
-    // Make a .txt file with the subrun, event number, showernum, hits and energies from the plane
-    // Useful info when making plots
-    if(write_to_file){
-        std::ofstream outfile;
-        outfile.open("Energy_files/reco_energy_SC_anode_recombtweak.txt");
-        for (auto i = n_hit_energy.begin(); i != n_hit_energy.end(); ++i){	
-            outfile << std::get<0>(*i) << "		" << std::get<1>(*i) << "		" << std::get<2>(*i) << "		" << std::get<3>(*i) << "		" << std::get<4>(*i) << std::endl;
-        }
-    }
     return 0;
 
 }
@@ -323,11 +311,12 @@ double ShowerRecoEnergyfromNumElectrons::CalculateEnergy(std::vector<art::Ptr<re
 
     if(fSCECorrectEField){
         recombination = A / (1 + (nominal_k_dEdx / localEfield_cweighted));
+        std::cout << "Using the charge weighted local Efield of " << localEfield_cweighted << " kV/cm and a recombination factor of " << recombination << "." << std::endl;
     }
     else{
         recombination = nominal_recombination;
+        std::cout << "Using the nominal Efield of " << nominal_Efield << "kV/cm and the nominal recombination factor of " << recombination << "." << std::endl;
     }   
-    std::cout << "recombination = " << recombination << std::endl;
     
     for (art::PtrVector<recob::Hit>::const_iterator hit = hits.begin(); hit != hits.end(); ++hit){
         totalCharge += (*hit)->Integral() * fCalorimetryAlg.LifetimeCorrection((*hit)->PeakTime()); // obtain charge and correct for lifetime
@@ -343,7 +332,7 @@ double ShowerRecoEnergyfromNumElectrons::CalculateEnergy(std::vector<art::Ptr<re
 }
 
 // Function to find only the largest shower
-void ShowerRecoEnergyfromNumElectrons::FindLargestShower(std::vector<std::tuple<unsigned int, unsigned int, unsigned int, unsigned int, double>> recoenergy_largest_shower){
+void ShowerRecoEnergyfromNumElectrons::FindLargestShower(std::vector<std::tuple<unsigned int, unsigned int, unsigned int, int, double>> recoenergy_largest_shower){
     // Cut showers so we are only left with the biggest (most hits) from each event.
     // Feel like there should be a more ROOT-y way to do this...
     unsigned int i = 0;                                                                 
@@ -368,11 +357,12 @@ void ShowerRecoEnergyfromNumElectrons::FindLargestShower(std::vector<std::tuple<
 
     // Add new tree to root file which has only the largest shower from each event
     TTree *recoenergy_LS = new TTree("recoenergy_LS", "Reco Energy Largest Shower");
+    //recoenergy_LS    = tfs->make<TTree>("recoenergy_LS","Reco Energy Largest Shower");
 
     recoenergy_LS->Branch("Subrun", &subRunN, "Subrun/i");                                                                              
     recoenergy_LS->Branch("Event", &EventN, "Event/i");    
     recoenergy_LS->Branch("ShowerN", &showernum, "ShowerN/i");
-    recoenergy_LS->Branch("NHits", &hitsize, "NHits/i");                                                     
+    recoenergy_LS->Branch("NHits", &hitsize, "NHits/I");                                                     
     recoenergy_LS->Branch("Energy", &Energy, "Energy/d"); 
 
     for(unsigned int i = 0; i < recoenergy_largest_shower.size(); i++){
