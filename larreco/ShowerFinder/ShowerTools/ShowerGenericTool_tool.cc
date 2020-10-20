@@ -38,17 +38,32 @@ namespace ShowerRecoTools {
       //Function to add the assoctions
       int AddAssociations(const art::Ptr<recob::PFParticle>& pfpPtr, art::Event& Event,
           reco::shower::ShowerElementHolder& ShowerEleHolder) override;
+ 
+      std::string fShowerRecoEnergy;
+      std::string fBestPlaneOutputLabel;   
   };
 
 
   ShowerGenericTool::ShowerGenericTool(const fhicl::ParameterSet& pset) :
-    IShowerTool(pset.get<fhicl::ParameterSet>("BaseTools"))
+    IShowerTool(pset.get<fhicl::ParameterSet>("BaseTools")),
+    fShowerRecoEnergy(pset.get<std::string>("ShowerEnergyfromNumElectrons")),
+    fBestPlaneOutputLabel(pset.get<std::string>("BestPlane")) 
   {
   }
 
   int ShowerGenericTool::CalculateElement(const art::Ptr<recob::PFParticle>& pfparticle,
       art::Event& Event, reco::shower::ShowerElementHolder& ShowerEleHolder){
-    return 0;
+    std::cout << "generic tool" << std::endl;
+    std::vector<double> RecoEnergy;
+      ShowerEleHolder.PrintElements(); 
+      ShowerEleHolder.CheckElement(fShowerRecoEnergy);         
+      ShowerEleHolder.GetElement(fShowerRecoEnergy, RecoEnergy);
+
+    for(unsigned int i = 0; i < RecoEnergy.size(); i++){
+        std::cout << RecoEnergy[i] << std::endl;
+     }
+
+      return 0;
   }
 
   int ShowerGenericTool::AddAssociations(const art::Ptr<recob::PFParticle>& pfpPtr, art::Event& Event,

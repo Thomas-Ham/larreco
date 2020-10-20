@@ -244,8 +244,6 @@ void ShowerEnergyCheater::FindLargestShower(std::vector<std::tuple<unsigned int,
 
 }
 
-
-
 } // namespace 
 
 DEFINE_ART_CLASS_TOOL(ShowerRecoTools::ShowerEnergyCheater)

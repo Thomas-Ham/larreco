@@ -65,8 +65,12 @@ namespace ShowerRecoTools {
     detinfo::DetectorProperties const* detprop = nullptr;
     art::ServiceHandle<geo::Geometry> fGeom;
     calo::CalorimetryAlg              fCalorimetryAlg;    
-
+   
+    //fcl params 
+    std::string fShowerEnergyfromNumElectrons; 
     bool fSCECorrectEField;
+    double fNominalModBoxdEdx;
+    double fNominalRecombinationFactor;
 
     // Declare variables etc.
     double Energy                = 0;
@@ -81,7 +85,9 @@ namespace ShowerRecoTools {
 
     // vec to store subrun #, event #, shower #, # of hits and energy
     std::vector<std::tuple<unsigned int, unsigned int, unsigned int, int, double>> n_hit_energy; // more useful when making plots
-		
+
+    bool write_to_file = false;
+
     TFile *m_file;    ///< TFile for saving event information  
     TTree *fOutputTree;
 
@@ -92,38 +98,44 @@ namespace ShowerRecoTools {
     fPFParticleModuleLabel(pset.get<art::InputTag>("PFParticleModuleLabel","")),
     detprop(lar::providerFrom<detinfo::DetectorPropertiesService>()),
     fCalorimetryAlg(pset.get<fhicl::ParameterSet>("CalorimetryAlg")),
-    fSCECorrectEField(pset.get<bool>("SCECorrectEField"))
+    fShowerEnergyfromNumElectrons(pset.get<std::string>("ShowerEnergyfromNumElectrons")),
+    fSCECorrectEField(pset.get<bool>("SCECorrectEField")),
+    fNominalModBoxdEdx(pset.get<double>("NominalModBoxdEdx")),
+    fNominalRecombinationFactor(pset.get<double>("NominalRecombinationFactor"))
     {
-    // The TFileService lets us define a tree and takes care of writing it to file
-    art::ServiceHandle<art::TFileService> tfs;
-    m_file      = new TFile("EnergyfromNumElectrons.root", "UPDATE"); 
-    fOutputTree = tfs->make<TTree>("recoenergy","Reco Energy");
 
-    //add branches                                                                                                                                                   
-    fOutputTree->Branch("Subrun", &subRunN, "Subrun/i");
-    fOutputTree->Branch("Event", &EventN, "Event/i");
-    fOutputTree->Branch("ShowerN", &showernum, "ShowerN/i");
-    fOutputTree->Branch("NHits", &hitsize, "NHits/I");
-    fOutputTree->Branch("Energy", &Energy, "Eventd");
+        if(write_to_file){
+            // The TFileService lets us define a tree and takes care of writing it to file
+            art::ServiceHandle<art::TFileService> tfs;
+            m_file      = new TFile("Energy_files/Anode_sample_SCE.root", "UPDATE"); 
+            fOutputTree = tfs->make<TTree>("recoenergy_SCE_correction_ModBox","Reco Energy SCE correction ModBox");
 
+            //add branches                                                                          
+            fOutputTree->Branch("Subrun", &subRunN, "Subrun/i");
+            fOutputTree->Branch("Event", &EventN, "Event/i");
+            fOutputTree->Branch("ShowerN", &showernum, "ShowerN/i");
+            fOutputTree->Branch("NHits", &hitsize, "NHits/I");
+            fOutputTree->Branch("Energy", &Energy, "Eventd");
+        }
     }
 
     ShowerRecoEnergyfromNumElectrons::~ShowerRecoEnergyfromNumElectrons()
     {
-    //store output tree                                                                                                                                              
-    m_file->cd();                                                                                                                                                    
-    fOutputTree->CloneTree()->Write("recoenergy", TObject::kOverwrite);
+        if(write_to_file){
+            //store output tree                                                                                            
+            m_file->cd();                                                  
+            fOutputTree->CloneTree()->Write("recoenergy_SCE_correction_ModBox", TObject::kOverwrite);
 
-    // Find only the largest shower from each event and write to the output file
-    // To find the largest shower need to compare with the previous one and since the tool iterates over them one at a time 
-    // we need to run at the end once we've looked at all the showers (hence we're in the destructor since it runs at the end).
-    bool find_largest_shower = true;
-    if(find_largest_shower){
-        FindLargestShower(n_hit_energy);
-    }
+            // Find only the largest shower from each event and write to the output file
+            // To find the largest shower need to compare with the previous one and since the tool iterates over them one at a time 
+            // we need to run at the end once we've looked at all the showers (hence we're in the destructor since it runs at the end).
+            bool find_largest_shower = true;
+            if(find_largest_shower){
+                FindLargestShower(n_hit_energy);
+            }
 
-    m_file->Close();
-
+            m_file->Close();
+        }
     }
 
     int ShowerRecoEnergyfromNumElectrons::CalculateElement(const art::Ptr<recob::PFParticle>& pfparticle,
@@ -144,11 +156,12 @@ namespace ShowerRecoTools {
     
     //ShowerEleHolder.PrintElements();
 
-    //Holder for the final product
-    std::vector<double> ShowerRecoEnergyfromNumElectrons;
-    
     // Get the number of planes
     unsigned int numPlanes = fGeom->Nplanes();
+
+    //Holder for the final product
+    std::vector<double> ShowerRecoEnergyfromNumElectrons(numPlanes, -999);
+    std::vector<double> ShowerRecoEnergyfromNumElectronsError(numPlanes, -999);
 
     // Get the assocated pfParicle vertex PFParticles
     art::Handle<std::vector<recob::PFParticle> > pfpHandle;
@@ -184,7 +197,7 @@ namespace ShowerRecoTools {
     // Get E-field -  Electric Field in the drift region in KV/cm
     nominal_Efield  = detprop->Efield(); // Nominal E-field
     //std::cout << "Nominal EField = " << nominal_Efield << std::endl;
-    
+
     // Get hit association for spacepoints
     art::FindManyP<recob::Hit> fmhsp(spHandle, Event, fPFParticleModuleLabel);
 
@@ -193,8 +206,6 @@ namespace ShowerRecoTools {
     TVector3 chargecentre = IShowerTool::GetTRACSAlg().ShowerCentre(spacepoints, fmhsp);
     //std::cout << "charge centre = " << chargecentre[0] << ", " << chargecentre[1] << ", " << chargecentre[2] << std::endl;
 
-    // Enable SCE 
-    fSCECorrectEField = true;
     // Get space charge corrected E-field
     if(fSCECorrectEField){
         // Check the shower centre exists and is sensible
@@ -251,6 +262,8 @@ namespace ShowerRecoTools {
        
         unsigned int viewNum = view;
         view_energies[viewNum] = Energy;
+        
+        ShowerRecoEnergyfromNumElectrons.at(view) = Energy;   
 
     }
 
@@ -276,7 +289,6 @@ namespace ShowerRecoTools {
                 n_hit_energy.push_back(std::make_tuple(subRunN, EventN, showernum, hitsize, Energy)); //save info for collection plane
             }
         }              	
-    ShowerRecoEnergyfromNumElectrons.push_back(Energy);   
     }
  
     if(ShowerRecoEnergyfromNumElectrons.size() == 0){
@@ -284,11 +296,11 @@ namespace ShowerRecoTools {
         return 1;
         }
 
-    std::vector<double> EnergyError = {-999,-999,-999};
 	 
-    ShowerEleHolder.SetElement(ShowerRecoEnergyfromNumElectrons,EnergyError,"ShowerEnergy");
- 
-    fOutputTree->Fill();
+    ShowerEleHolder.SetElement(ShowerRecoEnergyfromNumElectrons,ShowerRecoEnergyfromNumElectronsError,fShowerEnergyfromNumElectrons);
+    if(write_to_file){
+        fOutputTree->Fill();
+    }
 
     return 0;
 
@@ -302,19 +314,22 @@ double ShowerRecoEnergyfromNumElectrons::CalculateEnergy(std::vector<art::Ptr<re
     double totalEnergy = 0;
     double correctedtotalCharge = 0;
     double nElectrons = 0;
-    double nominal_recombination = 0.64; //constant factor for every shower (study done by Ed)	
     double recombination = 0;
     
-    double A = 0.8;
-    double nominal_k_dEdx = ((A / nominal_recombination) - 1) * nominal_Efield; // see https://arxiv.org/pdf/1306.1712.pdf
-
+    // double A = 0.8;
+    // double nominal_k_dEdx = ((A / fNominalRecombinationFactor) - 1) * nominal_Efield; // Birk's method, see https://arxiv.org/pdf/1306.1712.pdf
 
     if(fSCECorrectEField){
-        recombination = A / (1 + (nominal_k_dEdx / localEfield_cweighted));
+            
+        double rho   = detprop->Density();
+        double Alpha = util::kModBoxA;
+        double Beta  = util::kModBoxB/(rho * localEfield_cweighted);
+
+        recombination = std::log(Alpha + Beta * fNominalModBoxdEdx)/(Beta * fNominalModBoxdEdx);
         std::cout << "Using the charge weighted local Efield of " << localEfield_cweighted << " kV/cm and a recombination factor of " << recombination << "." << std::endl;
     }
     else{
-        recombination = nominal_recombination;
+        recombination = fNominalRecombinationFactor;
         std::cout << "Using the nominal Efield of " << nominal_Efield << "kV/cm and the nominal recombination factor of " << recombination << "." << std::endl;
     }   
     
@@ -356,7 +371,7 @@ void ShowerRecoEnergyfromNumElectrons::FindLargestShower(std::vector<std::tuple<
 
 
     // Add new tree to root file which has only the largest shower from each event
-    TTree *recoenergy_LS = new TTree("recoenergy_LS", "Reco Energy Largest Shower");
+    TTree *recoenergy_LS = new TTree("recoenergy_SCE_correction_ModBoxLS", "Reco Energy SCE Correction ModBox Largest Shower");
     //recoenergy_LS    = tfs->make<TTree>("recoenergy_LS","Reco Energy Largest Shower");
 
     recoenergy_LS->Branch("Subrun", &subRunN, "Subrun/i");                                                                              

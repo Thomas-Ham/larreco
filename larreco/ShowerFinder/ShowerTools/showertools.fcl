@@ -27,36 +27,63 @@ showerpcadirection:{
     ShowerPCAOutputLabel: "ShowerPCA"
     }
 
+#showerlinearenergy:{
+#    tool_type:  ShowerLinearEnergy
+#    BaseTools: @local::showerbasetools
+#    PFParticleModuleLabel: "pandora"
+#    UGradient:   0.00155644  #Gradient of the linear graph of the total charge to total
+                             #energy, in the U plane. in MeV/ADC.
+#    UIntercept:  5.92931     #Intercept of the linear graph of the total charge to total
+                             #energy in the plane. MeV
+#    VGradient:   0.00173915
+#    VIntercept:  -2.13307
+#    ZGradient:   0.00153631
+#    ZIntercept:  5.19711
+#    XGradient:   0
+#    XIntercept:  0
+#    YGradient:   0
+#    YIntercept:  0
+#    ThreeDGradient:  0
+#    ThreeDIntercept: 0
+#    ShowerEnergyOutputLabel: "ShowerEnergy"
+#    ShowerBestPlaneOutputLabel: "ShowerOverallBestPlane"
+#    }
+
 showerlinearenergy:{
     tool_type:  ShowerLinearEnergy
     BaseTools: @local::showerbasetools
     PFParticleModuleLabel: "pandora"
-    UGradient:   0.00155644  #Gradient of the linear graph of the total charge to total
-                             #energy, in the U plane. in MeV/ADC.
-    UIntercept:  5.92931     #Intercept of the linear graph of the total charge to total
-                             #energy in the plane. MeV
-    VGradient:   0.00173915
-    VIntercept:  -2.13307
-    ZGradient:   0.00153631
-    ZIntercept:  5.19711
-    XGradient:   0
-    XIntercept:  0
-    YGradient:   0
-    YIntercept:  0
-    ThreeDGradient:  0
-    ThreeDIntercept: 0
-    ShowerEnergyOutputLabel: "ShowerEnergy"
+    # Overwrite the Gradients and Intercepts in you experiemnt repository
+    Gradients:   [0.00155644, 0.00173915, 0.00153631] #Gradient of the linear graph of the total charge to total
+    #energy, in the Plane0 plane. in MeV/ADC.
+    Intercepts:  [5.92931, -2.13307, 5.19711]     #Intercept of the linear graph of the total charge to total
+    ShowerEnergyOutputLabel: "ShowerLinearEnergy"
     ShowerBestPlaneOutputLabel: "ShowerOverallBestPlane"
     }
 
- showerrecoenergyfromnumelectrons:{
+
+showerrecoenergyfromnumelectrons:{
     tool_type:  ShowerRecoEnergyfromNumElectrons
     BaseTools: @local::showerbasetools
     CalorimetryAlg: @local::sbnd_calorimetryalgmc #calorimetry fcls get overwritten in sbnd # @local::standard_calorimetryalgmc
     PFParticleModuleLabel: "pandora"
-    SCECorrectEField:     false
+    ShowerEnergyfromNumElectrons: "ShowerEnergyfromNumElectrons" 
+    SCECorrectEField:     true
+    NominalRecombinationFactor: 0.64    # Study done by Ed
+    NominalModBoxdEdx:  3.66740184715815  # Found by plugging nominal_recombination into modbox eq (see eg https://arxiv.org/pdf/1710.00396.pdf) and calculating with   
+                                          # Wolfran Alpha... We end up with a grim looking function of the form dEdx = k*exp(dEdx) 
+                                          # and I don't know / haven't looked up how to solve this properly yet (Google "ProductLog" or "Lambert-W" function for info)  
     }
 
+showerdecisionbestplane:{
+    tool_type: ShowerDecisionBestPlane
+    BaseTools: @local::showerbasetools
+    CalorimetryAlg: @local::sbnd_calorimetryalgmc #calorimetry fcls get overwritten in sbnd # @local::standard_calorimetryalgmc
+    PFParticleModuleLabel: "pandora"
+    InitialTrackBestPlaneInputLabel: "InitialTrackBestPlaneInputLabel"
+    OverallBestPlaneInputLabel: "ShowerOverallBestPlane"
+    BestPlaneOutputLabel: "BestPlaneOutputLabel"
+}
 
 shower2Dlinearregressiontrackhitfinder:{
     tool_type:             Shower2DLinearRegressionTrackHitFinder
@@ -368,6 +395,9 @@ showergenerictool:{
 tool_type: ShowerGenericTool
              BaseTools: @local::showerbasetools
              PFParticleModuleLabel: "pandora"
+             ShowerEnergyfromNumElectrons: "ShowerEnergyfromNumElectrons" 
+             ShowerLinearEnergy: "ShowerLinearEnergy" 
+             BestPlane: "ShowerOverallBestPlane"  
 }
 
 
