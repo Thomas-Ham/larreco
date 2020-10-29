@@ -57,6 +57,7 @@ namespace ShowerRecoTools {
     private:
     
     double CalculateEnergy(std::vector<art::Ptr<recob::Hit> >& hits, geo::View_t& view);
+    double ModBoxRecombination(double EField);
     void FindLargestShower(std::vector<std::tuple<unsigned int, unsigned int, unsigned int, int, double>> recoenergy_largest_shower);    
  
     art::InputTag fPFParticleModuleLabel;
@@ -82,6 +83,8 @@ namespace ShowerRecoTools {
     art::SubRunNumber_t subRunN;
     art::EventNumber_t EventN;
     int hitsize;
+
+    std::vector<std::tuple<unsigned int, TVector3, double>> SP_channel_pos_vec; // vec to hold space point position Efield
 
     // vec to store subrun #, event #, shower #, # of hits and energy
     std::vector<std::tuple<unsigned int, unsigned int, unsigned int, int, double>> n_hit_energy; // more useful when making plots
@@ -170,7 +173,7 @@ namespace ShowerRecoTools {
     return 1;
     }
 
-    std::map<geo::View_t, std::vector<art::Ptr<recob::Hit> > > view_hits;
+    std::map<geo::View_t, std::vector<art::Ptr<recob::Hit>>> view_hits;
 
     //Get the clusters
     art::Handle<std::vector<recob::Cluster> > clusHandle;
@@ -191,20 +194,39 @@ namespace ShowerRecoTools {
     art::FindManyP<recob::SpacePoint> fmsp(pfpHandle, Event, fPFParticleModuleLabel);
     std::vector<art::Ptr<recob::SpacePoint> > spacepoints = fmsp.at(pfparticle.key());
 
-    // Get shower centre 
-    TVector3 showercentre = IShowerTool::GetTRACSAlg().ShowerCentre(spacepoints);
-
-    // Get E-field -  Electric Field in the drift region in KV/cm
-    nominal_Efield  = detprop->Efield(); // Nominal E-field
-    //std::cout << "Nominal EField = " << nominal_Efield << std::endl;
 
     // Get hit association for spacepoints
+    int hits_total = 0;
+    SP_channel_pos_vec.clear();
     art::FindManyP<recob::Hit> fmhsp(spHandle, Event, fPFParticleModuleLabel);
+    for(auto const& spacepoint : spacepoints){
+        //Get the hits
+        std::vector<art::Ptr<recob::Hit> > hits = fmhsp.at(spacepoint.key());
+        hits_total += hits.size();
+        
+        TVector3 SP_pos = IShowerTool::GetTRACSAlg().SpacePointPosition(spacepoint); 
 
+        // get local Efield at SP_pos
+        double localEfield_SP = IShowerTool::GetTRACSAlg().SCECorrectEField(nominal_Efield, SP_pos);
+
+        for (art::PtrVector<recob::Hit>::const_iterator hit = hits.begin(); hit != hits.end(); ++hit){     
+            SP_channel_pos_vec.push_back(std::make_tuple((*hit)->Channel(),SP_pos,localEfield_SP));
+        }  
+    }
+    std::cout << "hits associated with SP: " << hits_total << std::endl;
+    for(auto i = SP_channel_pos_vec.begin(); i != SP_channel_pos_vec.end(); i++){
+        std::cout << std::get<0>(*i) << "       " << std::get<2>(*i) << std::endl;  
+    }     
+  
+    // Get E-field -  Electric Field in the drift region in KV/cm
+    nominal_Efield  = detprop->Efield(); // Nominal E-field
+ 
+    // Get shower centre 
+    TVector3 showercentre = IShowerTool::GetTRACSAlg().ShowerCentre(spacepoints);
+  
     // Get the charge weighted shower centre - sum(charge*position)/sum(charge)
     // Charge is obtained from the lifetime corrected hits and hits are obtained from the spacepoints 
     TVector3 chargecentre = IShowerTool::GetTRACSAlg().ShowerCentre(spacepoints, fmhsp);
-    //std::cout << "charge centre = " << chargecentre[0] << ", " << chargecentre[1] << ", " << chargecentre[2] << std::endl;
 
     // Get space charge corrected E-field
     if(fSCECorrectEField){
@@ -212,13 +234,12 @@ namespace ShowerRecoTools {
         // Think the charge weighted centre can take nan values which causes the E-field calculation to fail
         if(showercentre.Mag() >= 0 && chargecentre.Mag() >=0){ 
             localEfield = IShowerTool::GetTRACSAlg().SCECorrectEField(nominal_Efield, showercentre);
-            //std::cout << "local efield = " << localEfield << std::endl;
             localEfield_cweighted = IShowerTool::GetTRACSAlg().SCECorrectEField(nominal_Efield, chargecentre);
-            //std::cout << "local efield weighted = " << localEfield_cweighted << std::endl;
         }
         else{
             mf::LogWarning("ShowerRecoEnergyfromNumElectrons") << "Shower centre calculation doesn't look to be sensible. Reconstruction is probably dodgy." << std::endl;
         }
+
     }
 
     //Get the hit association for clusters
@@ -226,23 +247,26 @@ namespace ShowerRecoTools {
 
     std::vector<std::vector<art::Ptr<recob::Hit> > > trackHits;
     trackHits.resize(numPlanes);
+    
+    std::vector<double> pos; // vec to hold asscociated space point pos, if no space point use shower centre 
 
     //Loop over the clusters in the plane and get the hits
     for(auto const& cluster: clusters){
 
-    //Get the hits
-    std::vector<art::Ptr<recob::Hit> > hits = fmhc.at(cluster.key());
-    if(hits.size() == 0){
-        mf::LogWarning("ShowerRecoEnergyfromNumElectrons") << "No hit for the cluster. This suggest the find many is wrong."<< std::endl;
-        continue;
+        //Get the hits
+        std::vector<art::Ptr<recob::Hit> > hits = fmhc.at(cluster.key());
+        
+        if(hits.size() == 0){
+            mf::LogWarning("ShowerRecoEnergyfromNumElectrons") << "No hit for the cluster. This suggest the find many is wrong."<< std::endl;
+            continue;
+        }
+
+        //Get the view.
+        geo::View_t view = cluster->View();
+
+        view_hits[view].insert(view_hits[view].end(),hits.begin(),hits.end());
     }
 
-    //Get the view.
-    geo::View_t view = cluster->View();
-
-    view_hits[view].insert(view_hits[view].end(),hits.begin(),hits.end());
-    }
-		
     std::map<unsigned int, double > view_energies;
     std::vector<art::Ptr<recob::Hit>> hits;
     //Accounting for events crossing the cathode.
@@ -312,38 +336,58 @@ double ShowerRecoEnergyfromNumElectrons::CalculateEnergy(std::vector<art::Ptr<re
  
     double totalCharge = 0;
     double totalEnergy = 0;
-    double correctedtotalCharge = 0;
     double nElectrons = 0;
     double recombination = 0;
     
     // double A = 0.8;
     // double nominal_k_dEdx = ((A / fNominalRecombinationFactor) - 1) * nominal_Efield; // Birk's method, see https://arxiv.org/pdf/1306.1712.pdf
 
-    if(fSCECorrectEField){
-            
-        double rho   = detprop->Density();
-        double Alpha = util::kModBoxA;
-        double Beta  = util::kModBoxB/(rho * localEfield_cweighted);
+   
+    for (art::PtrVector<recob::Hit>::const_iterator hit = hits.begin(); hit != hits.end(); ++hit){ // loop over hits from cluster 
+        // calculate recombination factor per hit 
+        if(fSCECorrectEField){
+       
+            auto it = std::find_if(SP_channel_pos_vec.begin(), SP_channel_pos_vec.end(), [&](const std::tuple<unsigned int, TVector3, double>& e){
+                return std::get<0>(e) == (*hit)->Channel();
+            });
+            // If hit has associated SP use the local Efield at the SP position to calculate recombination factor 
+            if(it != SP_channel_pos_vec.end()){
+                std::cout << (*hit)->Channel() << ": Found hit with corresponding space point" << std::endl;
+                recombination = ModBoxRecombination(std::get<2>(*it));
+            }
+            // If there's no associated SP, use the EField at the shower centre to calculate recombination 
+            else{
+                std::cout <<  "hit with no corresponding space point" << std::endl;
+                recombination = ModBoxRecombination(localEfield_cweighted);
+            }
 
-        recombination = std::log(Alpha + Beta * fNominalModBoxdEdx)/(Beta * fNominalModBoxdEdx);
-        std::cout << "Using the charge weighted local Efield of " << localEfield_cweighted << " kV/cm and a recombination factor of " << recombination << "." << std::endl;
-    }
-    else{
-        recombination = fNominalRecombinationFactor;
-        std::cout << "Using the nominal Efield of " << nominal_Efield << "kV/cm and the nominal recombination factor of " << recombination << "." << std::endl;
-    }   
+        }
+        else{
+            recombination = fNominalRecombinationFactor;
+            std::cout << "Using the nominal Efield of " << nominal_Efield << "kV/cm and the nominal recombination factor of " << recombination << "." << std::endl;
+        }   
     
-    for (art::PtrVector<recob::Hit>::const_iterator hit = hits.begin(); hit != hits.end(); ++hit){
-        totalCharge += (*hit)->Integral() * fCalorimetryAlg.LifetimeCorrection((*hit)->PeakTime()); // obtain charge and correct for lifetime
+        totalCharge += (*hit)->Integral() * fCalorimetryAlg.LifetimeCorrection((*hit)->PeakTime()) / recombination; // obtain charge and correct for lifetime and recombination
     }
  		
-    // correct charge due to recombination
-    correctedtotalCharge = totalCharge / recombination;
     // calculate # of electrons and the corresponding energy
-    nElectrons = fCalorimetryAlg.ElectronsFromADCArea(correctedtotalCharge, view);
+    nElectrons = fCalorimetryAlg.ElectronsFromADCArea(totalCharge, view);
     totalEnergy = (nElectrons / util::kGeVToElectrons) * 1000; // energy in MeV
     return totalEnergy;
  
+}
+
+// ModBox function to calculate recomobination
+double ShowerRecoEnergyfromNumElectrons::ModBoxRecombination(double EField){
+    double rho   = detprop->Density();
+    double Alpha = util::kModBoxA;
+    double Beta  = util::kModBoxB/(rho * EField);
+
+    double recombination = 0;
+    recombination = std::log(Alpha + Beta * fNominalModBoxdEdx)/(Beta * fNominalModBoxdEdx);
+    std::cout << "Using the charge weighted local Efield of " << localEfield_cweighted << " kV/cm and a recombination factor of " << recombination << "." << std::endl;
+
+    return recombination; 
 }
 
 // Function to find only the largest shower
